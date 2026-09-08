@@ -1,0 +1,45 @@
+name: Bootstrap MediLacra baseline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bootstrap-medilacra-baseline.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out target repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch pinned MediLacra baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/natosit-dev/medilacra.git /tmp/medilacra
+          git -C /tmp/medilacra fetch --depth 1 origin 9a55f0f2dc7f120a98021ac0d9def43e83bc8b5b
+          git -C /tmp/medilacra checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/medilacra rev-parse HEAD)" = "9a55f0f2dc7f120a98021ac0d9def43e83bc8b5b"
+
+      - name: Replace target tree with MediLacra snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          rsync -a --exclude='.git' /tmp/medilacra/ ./
+
+      - name: Commit copied baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Copy MediLacra baseline from main (9a55f0f)"
+          git push origin HEAD:main
