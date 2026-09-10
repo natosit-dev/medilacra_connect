@@ -1,0 +1,91 @@
+name: Integrate Disco Inferno
+
+on:
+  push:
+    branches:
+      - integrate/disco-inferno
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out medilacra_connect
+        uses: actions/checkout@v4
+        with:
+          ref: integrate/disco-inferno
+          fetch-depth: 0
+
+      - name: Fetch Disco Inferno source branch
+        run: |
+          git clone --depth 1 --branch experiment/disco-inferno https://github.com/natosit-dev/medilacra.git /tmp/medilacra-disco
+
+      - name: Copy only Disco Inferno tool surface
+        run: |
+          mkdir -p experiments pages tests
+          rm -rf experiments/disco_inferno
+          cp -a /tmp/medilacra-disco/experiments/disco_inferno experiments/
+          cp /tmp/medilacra-disco/pages/8_Disco_Inferno.py pages/8_Disco_Inferno.py
+          cp /tmp/medilacra-disco/tests/test_disco_inferno.py tests/test_disco_inferno.py
+          cp /tmp/medilacra-disco/tests/test_disco_inferno_offline_sdoh.py tests/test_disco_inferno_offline_sdoh.py
+          cp /tmp/medilacra-disco/tests/test_disco_inferno_process_control.py tests/test_disco_inferno_process_control.py
+
+      - name: Decouple Disco Inferno from Structured Sparsity
+        run: |
+          cat > experiments/disco_inferno/models.py <<'PY'
+          from __future__ import annotations
+
+          from dataclasses import dataclass
+
+
+          @dataclass(frozen=True)
+          class SyntheticCase:
+              """One generated MediLacra patient reality used by Disco Inferno.
+
+              The child objects retain their normal MediLacra identifiers, so
+              encounter_id remains the relationship that preserves grain.
+              """
+
+              patient: object
+              encounters: tuple[object, ...]
+              transactions: tuple[object, ...]
+              observations: tuple[object, ...]
+          PY
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("experiments/disco_inferno/run_experiment.py")
+          text = path.read_text(encoding="utf-8")
+          old = "from experiments.structured_sparsity.layouts import SyntheticCase  # noqa: E402"
+          new = "from experiments.disco_inferno.models import SyntheticCase  # noqa: E402"
+          if old not in text:
+              raise SystemExit("Expected Structured Sparsity SyntheticCase import was not found")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+
+          if grep -R -n -E '^(from|import) experiments\.structured_sparsity' experiments/disco_inferno pages/8_Disco_Inferno.py tests/test_disco_inferno*.py; then
+            echo "Unexpected Structured Sparsity code dependency remains"
+            exit 1
+          fi
+
+      - name: Install baseline dependencies and test Disco Inferno
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+          python -m pytest -q \
+            tests/test_disco_inferno.py \
+            tests/test_disco_inferno_process_control.py \
+            tests/test_disco_inferno_offline_sdoh.py
+          python -m compileall -q experiments/disco_inferno pages/8_Disco_Inferno.py
+
+      - name: Commit isolated integration
+        run: |
+          rm -f .github/workflows/integrate-disco-inferno.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Integrate Disco Inferno as isolated MediLacra tool"
+          git push origin HEAD:integrate/disco-inferno
