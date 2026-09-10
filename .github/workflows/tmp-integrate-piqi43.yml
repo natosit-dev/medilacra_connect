@@ -35,26 +35,19 @@ jobs:
       - name: Copy only PIQI-43 owned paths
         run: |
           set -euxo pipefail
-          mkdir -p connectathon docs/connectathon tests experiments/disco_inferno pages .github/workflows
+          mkdir -p connectathon docs/connectathon tests experiments/disco_inferno pages
           cp -a _source_medilacra/connectathon/. connectathon/
           cp -a _source_medilacra/docs/connectathon/. docs/connectathon/
           cp _source_medilacra/pages/9_PIQI_Connectathon_43.py pages/9_PIQI_Connectathon_43.py
           cp _source_medilacra/experiments/disco_inferno/fhir_corruptions.py experiments/disco_inferno/fhir_corruptions.py
           cp _source_medilacra/tests/test_connectathon_*.py tests/
           cp _source_medilacra/hl7_demo/labs.py hl7_demo/labs.py
-          cp _source_medilacra/.github/workflows/connectathon-smoke.yml .github/workflows/connectathon-smoke.yml
           rm -rf _source_medilacra
 
-      - name: Adapt permanent smoke workflow and stale UI copy
+      - name: Refresh stale UI copy
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          workflow = Path('.github/workflows/connectathon-smoke.yml')
-          text = workflow.read_text()
-          text = text.replace('      - connectathon/piqi-43\n', '      - main\n', 1)
-          text = text.replace('          ref: connectathon/piqi-43\n', '          ref: main\n')
-          workflow.write_text(text)
 
           page = Path('pages/9_PIQI_Connectathon_43.py')
           text = page.read_text()
@@ -111,7 +104,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add connectathon docs/connectathon pages/9_PIQI_Connectathon_43.py \
             experiments/disco_inferno/fhir_corruptions.py tests/test_connectathon_*.py \
-            hl7_demo/labs.py .github/workflows/connectathon-smoke.yml
+            hl7_demo/labs.py
           if git diff --cached --quiet; then
             echo "No integration changes to commit"
           else
