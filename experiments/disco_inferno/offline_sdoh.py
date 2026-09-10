@@ -8,14 +8,15 @@ class OfflineSDOHNetworkError(RuntimeError):
 
 
 def install_offline_sdoh() -> None:
-    """Force the current worker process into a no-network SDOH mode.
+    """Force the current Disco Inferno worker into a no-network SDOH mode.
 
-    Disco Inferno workers are isolated processes, so it is safe to replace the
-    SDOH module's lookup entry points process-locally. This is stronger than
-    trying to pass flags through individual message builders: any accidental
-    SDOH lookup in the worker returns a neutral local value, and any direct HTTP
-    access from hl7_demo.sdoh is blocked.
+    Disco Inferno runs in its own worker process, so the offline boundary can be
+    stronger than the shared MediLacra code. Public SDOH lookups return neutral
+    local values, direct SDOH HTTP helpers are disabled, and Requests is blocked
+    process-wide so a previously imported alias cannot escape the boundary.
     """
+
+    import requests
 
     from hl7_demo import messages as hl7_messages
     from hl7_demo import sdoh as sdoh_module
@@ -37,7 +38,7 @@ def install_offline_sdoh() -> None:
 
     def blocked_http(*_args, **_kwargs):
         raise OfflineSDOHNetworkError(
-            "External SDOH HTTP access is disabled for this Disco Inferno worker."
+            "Outbound HTTP is disabled for this Disco Inferno worker while SDOH is off."
         )
 
     # Public SDOH entry points.
@@ -50,19 +51,22 @@ def install_offline_sdoh() -> None:
     if hasattr(sdoh_module, "zip_to_county_fips"):
         sdoh_module.zip_to_county_fips = no_county
 
-    # Lower-level network helpers are disabled too so a future SDOH code path
-    # cannot silently bypass the public wrappers.
+    # Lower-level SDOH helpers are disabled as defense in depth.
     if hasattr(sdoh_module, "_airnow_observation"):
         sdoh_module._airnow_observation = no_air_quality
     if hasattr(sdoh_module, "_http_get_json_with_retries"):
         sdoh_module._http_get_json_with_retries = lambda *_args, **_kwargs: None
 
-    # build_adt imports these functions directly into hl7_demo.messages, so its
-    # aliases must be replaced as well as the originals in hl7_demo.sdoh.
+    # build_adt imported these functions directly, so replace its aliases too.
     hl7_messages.get_air_quality_by_zip = no_air_quality
     hl7_messages.get_poverty_pct_by_zcta = no_poverty
 
-    # Replace only the SDOH module's references to requests/time. The actual
-    # requests and time modules remain untouched for the rest of the worker.
+    # Important: replacing only sdoh_module.requests is not enough because a
+    # different module may already hold `requests` or `requests.get`. Blocking
+    # Session.request closes that escape path for every Requests caller inside
+    # this isolated worker process without touching the parent Streamlit process.
+    requests.sessions.Session.request = blocked_http
+
+    # Keep the SDOH module itself visibly offline as well.
     sdoh_module.requests = SimpleNamespace(get=blocked_http)
     sdoh_module.time = SimpleNamespace(sleep=lambda *_args, **_kwargs: None)
