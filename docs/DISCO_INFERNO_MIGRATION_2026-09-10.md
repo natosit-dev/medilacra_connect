@@ -50,7 +50,7 @@ The relevant user prompts are preserved here at the top of the migration record 
 
 Disco Inferno was successfully migrated from `natosit-dev/medilacra` into `natosit-dev/medilacra_connect` as an independent MediLacra Streamlit tool.
 
-The final migration is deliberately additive. Relative to the pre-Disco `medilacra_connect` baseline commit `8a6ffe261c1c1e14e421f824dea0224debafbc1b`, the completed migration adds 17 files and modifies or deletes **zero pre-existing baseline files**.
+The tool migration is deliberately additive. Relative to the pre-Disco `medilacra_connect` baseline commit `8a6ffe261c1c1e14e421f824dea0224debafbc1b`, the accepted Disco tool state added 17 files and modified or deleted **zero pre-existing baseline files**. This migration record itself is the 18th new repository path relative to that baseline and is documentation, not part of the executable Disco tool surface.
 
 The migration did **not** perform a wholesale Git merge of `experiment/disco-inferno`. Inspection showed that the source branch carried earlier Structured Sparsity history and files. Copying the branch directly would therefore have violated the requested tool boundary and prematurely coupled two experiments.
 
@@ -155,7 +155,7 @@ The tool continues to ask the Disco Inferno question: what knowledge survives in
 
 # Files Added
 
-Final comparison from pre-Disco baseline commit `8a6ffe261c1c1e14e421f824dea0224debafbc1b` to the accepted `main` state showed 17 added files and no modifications or deletions to pre-existing baseline files.
+At tool acceptance, comparison from pre-Disco baseline commit `8a6ffe261c1c1e14e421f824dea0224debafbc1b` to the accepted executable Disco state showed 17 added files and no modifications or deletions to pre-existing baseline files. This document is intentionally counted separately as migration documentation.
 
 ## Streamlit page
 
@@ -197,6 +197,14 @@ tests/test_disco_inferno.py
 tests/test_disco_inferno_offline_sdoh.py
 tests/test_disco_inferno_process_control.py
 ```
+
+## Migration documentation
+
+```text
+docs/DISCO_INFERNO_MIGRATION_2026-09-10.md
+```
+
+This record is the documentation closeout artifact and is not counted among the 17 executable/test/evidence files in the tool migration itself.
 
 ---
 
@@ -271,7 +279,7 @@ Validation occurred at three levels.
 
 ## 1. Repository boundary validation
 
-The final comparison against the pre-Disco baseline contains only the 17 files listed above.
+The tool-state comparison against the pre-Disco baseline contained only the 17 Disco executable/test/evidence files listed above. The later addition of this documentation file does not change that implementation boundary.
 
 Result:
 
@@ -437,6 +445,16 @@ ec3d4caf5dc0fcce81f7f87dc7c43952634f465d
 
 This commit strengthened the Disco worker's offline boundary and added regression coverage. It changed no shared MediLacra code.
 
+## Documentation closeout
+
+Migration record:
+
+```text
+docs/DISCO_INFERNO_MIGRATION_2026-09-10.md
+```
+
+This document was added after user acceptance to preserve prompt provenance, migration mechanics, validation evidence, implementation boundaries, and the decision log.
+
 ---
 
 # Decision Log
@@ -445,7 +463,7 @@ This commit strengthened the Disco worker's offline boundary and added regressio
 |---|---|---|---|---|
 | DI-MIG-001 | 2026-09-10 | Treat Disco Inferno as a separate MediLacra tool/page. | The Connectathon platform is intended to contain several independently legible tools rather than collapse experiments into one interface or code path. | Disco is exposed as `pages/8_Disco_Inferno.py` with its own package. |
 | DI-MIG-002 | 2026-09-10 | Do not wholesale-merge `experiment/disco-inferno`. | The source branch carried Structured Sparsity history and files in addition to Disco Inferno. | Only the Disco-specific surface was migrated. |
-| DI-MIG-003 | 2026-09-10 | Preserve shared MediLacra files unchanged. | The user explicitly requested care around modifications to shared code, and the source implementation did not require such modifications. | Final baseline-to-current diff contains no changed/deleted pre-existing files. |
+| DI-MIG-003 | 2026-09-10 | Preserve shared MediLacra files unchanged. | The user explicitly requested care around modifications to shared code, and the source implementation did not require such modifications. | Baseline-to-tool-state diff contains no changed/deleted pre-existing files. |
 | DI-MIG-004 | 2026-09-10 | Localize `SyntheticCase` inside Disco Inferno. | Disco's inherited import from Structured Sparsity created an unnecessary cross-experiment dependency. | Added `experiments/disco_inferno/models.py`; Structured Sparsity remains independently migratable later. |
 | DI-MIG-005 | 2026-09-10 | Reuse MediLacra canonical models/generators/message builders rather than copying them. | Disco is an experiment over MediLacra reality; duplicating core generation would create drift and obscure provenance. | Disco consumes shared core behavior but does not own or fork it. |
 | DI-MIG-006 | 2026-09-10 | Keep SDOH opt-in and offline by default. | External enrichment is not part of the core entropy experiment and should not make deterministic local generation depend on API latency/availability. | Normal Disco runs remain locally reproducible without external services. |
