@@ -1,0 +1,120 @@
+name: Temporary PIQI-43 integration
+
+on:
+  push:
+    branches:
+      - integrate/piqi-43
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          ref: integrate/piqi-43
+          fetch-depth: 0
+
+      - name: Checkout MediLacra PIQI-43 source
+        uses: actions/checkout@v4
+        with:
+          repository: natosit-dev/medilacra
+          ref: connectathon/piqi-43
+          path: _source_medilacra
+
+      - name: Checkout PIQITT main
+        uses: actions/checkout@v4
+        with:
+          repository: natosit-dev/piqitt
+          ref: main
+          path: _piqitt
+
+      - name: Copy only PIQI-43 owned paths
+        run: |
+          set -euxo pipefail
+          mkdir -p connectathon docs/connectathon tests experiments/disco_inferno pages .github/workflows
+          cp -a _source_medilacra/connectathon/. connectathon/
+          cp -a _source_medilacra/docs/connectathon/. docs/connectathon/
+          cp _source_medilacra/pages/9_PIQI_Connectathon_43.py pages/9_PIQI_Connectathon_43.py
+          cp _source_medilacra/experiments/disco_inferno/fhir_corruptions.py experiments/disco_inferno/fhir_corruptions.py
+          cp _source_medilacra/tests/test_connectathon_*.py tests/
+          cp _source_medilacra/hl7_demo/labs.py hl7_demo/labs.py
+          cp _source_medilacra/.github/workflows/connectathon-smoke.yml .github/workflows/connectathon-smoke.yml
+          rm -rf _source_medilacra
+
+      - name: Adapt permanent smoke workflow and stale UI copy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/connectathon-smoke.yml')
+          text = workflow.read_text()
+          text = text.replace('      - connectathon/piqi-43\n', '      - main\n', 1)
+          text = text.replace('          ref: connectathon/piqi-43\n', '          ref: main\n')
+          workflow.write_text(text)
+
+          page = Path('pages/9_PIQI_Connectathon_43.py')
+          text = page.read_text()
+          text = text.replace(
+              '    "First-pass boundary: this UI builds and inspects the local evidence pack. "\n'
+              '    "External PIQI endpoint submission is intentionally not wired until the September 2 track kickoff "\n'
+              '    "confirms the live submission/report contract."\n',
+              '    "Current boundary: this UI builds and inspects the local evidence pack. "\n'
+              '    "External PIQI endpoint submission is not yet wired into this consolidated module."\n'
+          )
+          text = text.replace(
+              '    "Waiting on the September 2 track kickoff for the current endpoint submission mechanics and Evaluation/Audit Report shape. "\n'
+              '    "The next slice will preserve raw endpoint responses before we normalize or compare anything."\n',
+              '    "External PIQI endpoint execution remains the next implementation slice. "\n'
+              '    "Raw endpoint responses must be preserved before normalization or comparison."\n'
+          )
+          page.write_text(text)
+          PY
+
+      - name: Verify migration boundary
+        run: |
+          test ! -d experiments/structured_sparsity
+          git status --short
+
+      - name: Compile PIQI-43 surface
+        run: |
+          python -m py_compile \
+            connectathon/__init__.py \
+            connectathon/fhir_control.py \
+            connectathon/piqitt_bridge.py \
+            connectathon/preflight.py \
+            connectathon/provenance.py \
+            connectathon/scenarios.py \
+            connectathon/run.py \
+            experiments/disco_inferno/fhir_corruptions.py \
+            hl7_demo/labs.py \
+            pages/9_PIQI_Connectathon_43.py
+
+      - name: Run PIQI-43 regression suites against PIQITT main
+        env:
+          PIQITT_REPO: ${{ github.workspace }}/_piqitt
+        run: |
+          python -m pip install pytest
+          python -m pytest -q \
+            tests/test_connectathon_fhir_corruptions.py \
+            tests/test_connectathon_control_quality.py \
+            tests/test_connectathon_scenarios.py \
+            tests/test_connectathon_piqitt_integration.py
+
+      - name: Commit integrated module
+        run: |
+          rm -rf _piqitt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add connectathon docs/connectathon pages/9_PIQI_Connectathon_43.py \
+            experiments/disco_inferno/fhir_corruptions.py tests/test_connectathon_*.py \
+            hl7_demo/labs.py .github/workflows/connectathon-smoke.yml
+          if git diff --cached --quiet; then
+            echo "No integration changes to commit"
+          else
+            git commit -m "Integrate PIQI Connectathon 43 workbench"
+            git push origin integrate/piqi-43
+          fi
