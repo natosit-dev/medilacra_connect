@@ -27,14 +27,15 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install test dependency
-        run: python -m pip install pytest
+      - name: Install test dependencies
+        run: python -m pip install pytest requests
 
       - name: Compile Connectathon modules
         run: |
           python -m py_compile \
             connectathon/__init__.py \
             connectathon/fhir_control.py \
+            connectathon/piqi_execution.py \
             connectathon/piqitt_bridge.py \
             connectathon/preflight.py \
             connectathon/provenance.py \
@@ -52,4 +53,5 @@ jobs:
             tests/test_connectathon_fhir_corruptions.py \
             tests/test_connectathon_control_quality.py \
             tests/test_connectathon_scenarios.py \
-            tests/test_connectathon_piqitt_integration.py
+            tests/test_connectathon_piqitt_integration.py \
+            tests/test_connectathon_piqi_execution.py
