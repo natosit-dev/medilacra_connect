@@ -113,19 +113,31 @@ def _normalize_datetime_values(value: Any) -> int:
     return changed
 
 
-def _coded_value_from_string(raw: str) -> dict[str, Any] | None:
+def _coded_value_from_string(
+    raw: str,
+    *,
+    preserve_unknown_system: bool = False,
+) -> dict[str, Any] | None:
     parts = raw.split("^")
     if len(parts) < 3:
         return None
     code, display, system_token = parts[0].strip(), parts[1].strip(), parts[2].strip()
     if not code or not system_token:
         return None
+
     system = CODE_SYSTEM_MAP.get(system_token.upper())
     if system is None:
-        if system_token.upper() == "HL7":
+        if system_token.startswith(("http://", "https://", "urn:")):
+            system = system_token
+        elif system_token.upper() == "HL7":
             system = "urn:hl7v2:HL7"
+        elif preserve_unknown_system:
+            # Preserve the source HL7 coding-system token without inventing a
+            # canonical terminology identity for it.
+            system = f"urn:hl7v2:{system_token}"
         else:
             return None
+
     coding: dict[str, Any] = {"system": system, "code": code}
     if display:
         coding["display"] = display
