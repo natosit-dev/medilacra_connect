@@ -15,13 +15,14 @@ def _oru_message() -> str:
             "PV1|1|I|WARD^101^A^FAC",
             "OBR|1|||4548-4^Hemoglobin A1c^LN",
             "OBX|1|NM|4548-4^Hemoglobin A1c^LN||6.1|%|||||F|||20260901100000",
+            "OBX|2|CWE|76691-5^Gender identity^LN||X-LOCAL^Synthetic coded value^99MEDILACRA|||||F|||20260901100000",
         ]
     )
 
 
 def test_real_piqitt_converter_can_feed_local_connectathon_pack(tmp_path: Path):
     piqitt_repo = os.environ.get("PIQITT_REPO")
-    assert piqitt_repo, "PIQITT_REPO must point to the checked-out PIQITT Connectathon branch"
+    assert piqitt_repo, "PIQITT_REPO must point to the checked-out PIQITT converter repository"
 
     bundle, metadata = convert_hl7_text(
         _oru_message(),
@@ -33,6 +34,18 @@ def test_real_piqitt_converter_can_feed_local_connectathon_pack(tmp_path: Path):
     resource_types = [entry["resource"]["resourceType"] for entry in bundle["entry"]]
     assert "Patient" in resource_types
     assert "Observation" in resource_types
+
+    coded_observation = next(
+        entry["resource"]
+        for entry in bundle["entry"]
+        if entry["resource"].get("resourceType") == "Observation"
+        and ((entry["resource"].get("code") or {}).get("coding") or [{}])[0].get("code") == "76691-5"
+    )
+    assert "valueString" not in coded_observation
+    coded_value = coded_observation["valueCodeableConcept"]["coding"][0]
+    assert coded_value["code"] == "X-LOCAL"
+    assert coded_value["system"] == "urn:hl7v2:99MEDILACRA"
+    assert metadata["piqitt_coded_obx_compatibility"]["repaired"] == 1
 
     run = build_scenario_pack(
         bundle,
