@@ -1,0 +1,278 @@
+name: Temporary PIQI coded-value fix
+
+on:
+  push:
+    branches:
+      - integrate/piqi-43
+    paths:
+      - .github/workflows/tmp-fix-piqi-coded-values.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target
+        uses: actions/checkout@v4
+        with:
+          ref: integrate/piqi-43
+          fetch-depth: 0
+
+      - name: Checkout PIQITT main
+        uses: actions/checkout@v4
+        with:
+          repository: natosit-dev/piqitt
+          ref: main
+          path: _piqitt
+
+      - name: Patch PIQI coded-value compatibility boundary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('connectathon/fhir_control.py')
+          text = path.read_text()
+          old = '''def _coded_value_from_string(raw: str) -> dict[str, Any] | None:
+              parts = raw.split("^")
+              if len(parts) < 3:
+                  return None
+              code, display, system_token = parts[0].strip(), parts[1].strip(), parts[2].strip()
+              if not code or not system_token:
+                  return None
+              system = CODE_SYSTEM_MAP.get(system_token.upper())
+              if system is None:
+                  if system_token.upper() == "HL7":
+                      system = "urn:hl7v2:HL7"
+                  else:
+                      return None
+              coding: dict[str, Any] = {"system": system, "code": code}
+              if display:
+                  coding["display"] = display
+              return {"coding": [coding]}
+          '''.replace('          ', '')
+          new = '''def _coded_value_from_string(
+              raw: str,
+              *,
+              preserve_unknown_system: bool = False,
+          ) -> dict[str, Any] | None:
+              parts = raw.split("^")
+              if len(parts) < 3:
+                  return None
+              code, display, system_token = parts[0].strip(), parts[1].strip(), parts[2].strip()
+              if not code or not system_token:
+                  return None
+
+              system = CODE_SYSTEM_MAP.get(system_token.upper())
+              if system is None:
+                  if system_token.startswith(("http://", "https://", "urn:")):
+                      system = system_token
+                  elif system_token.upper() == "HL7":
+                      system = "urn:hl7v2:HL7"
+                  elif preserve_unknown_system:
+                      # Preserve the source HL7 coding-system token without pretending that
+                      # MediLacra knows a canonical terminology URI for it.
+                      system = f"urn:hl7v2:{system_token}"
+                  else:
+                      return None
+
+              coding: dict[str, Any] = {"system": system, "code": code}
+              if display:
+                  coding["display"] = display
+              return {"coding": [coding]}
+          '''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('fhir_control coded-value block not found')
+          path.write_text(text.replace(old, new))
+
+          path = Path('connectathon/piqitt_bridge.py')
+          text = path.read_text()
+          old_import = 'from connectathon.fhir_control import prepare_control_bundle\n'
+          new_import = 'from connectathon.fhir_control import _coded_value_from_string, prepare_control_bundle\n'
+          if old_import not in text:
+              raise SystemExit('piqitt_bridge import boundary not found')
+          text = text.replace(old_import, new_import, 1)
+
+          marker = '''def convert_hl7_text(
+          '''
+          helper = '''def _repair_piqitt_coded_obx_values(
+              raw_bundle: dict[str, Any],
+              parsed: dict[str, Any],
+              backend: ModuleType,
+          ) -> dict[str, Any]:
+              """Repair PIQITT CE-family OBX values that fell through to valueString.
+
+              PIQITT main currently materializes OBX-2=CE as CodeableConcept but treats
+              CWE/CNE as generic strings. We use the original HL7 datatype here so the
+              compatibility repair is provenance-driven rather than guessing from carets
+              in arbitrary narrative text.
+              """
+              observations = [
+                  entry.get("resource")
+                  for entry in raw_bundle.get("entry", [])
+                  if isinstance(entry, dict)
+                  and isinstance(entry.get("resource"), dict)
+                  and entry["resource"].get("resourceType") == "Observation"
+              ]
+              obx_entries = parsed.get("OBX") or []
+              report: dict[str, Any] = {
+                  "obx_count": len(obx_entries),
+                  "observation_count": len(observations),
+                  "repaired": 0,
+                  "unresolved": [],
+              }
+
+              for index, (obx_entry, observation) in enumerate(zip(obx_entries, observations), start=1):
+                  fields = obx_entry.get("_fields", []) if isinstance(obx_entry, dict) else []
+                  value_type = str(backend.get_field(fields, 2) or "").upper()
+                  if value_type not in {"CE", "CWE", "CNE"}:
+                      continue
+                  if "valueCodeableConcept" in observation:
+                      continue
+
+                  raw_value = backend.get_field(fields, 5)
+                  if not raw_value or not isinstance(observation.get("valueString"), str):
+                      continue
+
+                  concept = _coded_value_from_string(raw_value, preserve_unknown_system=True)
+                  if concept is None:
+                      report["unresolved"].append(
+                          {"obx_index": index, "value_type": value_type, "value": raw_value}
+                      )
+                      continue
+
+                  observation.pop("valueString", None)
+                  observation["valueCodeableConcept"] = concept
+                  report["repaired"] += 1
+
+              return report
+
+
+'''
+          if marker not in text:
+              raise SystemExit('piqitt_bridge convert marker not found')
+          text = text.replace(marker, helper + marker, 1)
+
+          old_convert = '''    raw_bundle, message_type = backend.convert_message_to_bundle(messages[message_index - 1])
+              bundle, cleanup = prepare_control_bundle(raw_bundle)
+          '''.replace('          ', '')
+          new_convert = '''    selected_message = messages[message_index - 1]
+              parsed = backend.parse_hl7(selected_message)
+              raw_bundle, message_type = backend.convert_message_to_bundle(selected_message)
+              coded_value_compatibility = _repair_piqitt_coded_obx_values(raw_bundle, parsed, backend)
+              bundle, cleanup = prepare_control_bundle(raw_bundle)
+          '''.replace('          ', '')
+          if old_convert not in text:
+              raise SystemExit('piqitt_bridge conversion block not found')
+          text = text.replace(old_convert, new_convert, 1)
+
+          old_meta = '''        "piqitt_raw_bundle_type": raw_bundle.get("type"),
+                  "connectathon_bundle_type": bundle.get("type"),
+          '''.replace('          ', '')
+          new_meta = '''        "piqitt_raw_bundle_type": raw_bundle.get("type"),
+                  "piqitt_coded_obx_compatibility": coded_value_compatibility,
+                  "connectathon_bundle_type": bundle.get("type"),
+          '''.replace('          ', '')
+          if old_meta not in text:
+              raise SystemExit('piqitt_bridge metadata block not found')
+          path.write_text(text.replace(old_meta, new_meta, 1))
+
+          path = Path('connectathon/preflight.py')
+          text = path.read_text()
+          old = '''            if isinstance(raw, str) and raw.count("^") >= 2:
+                  packed_strings.append(resource_id)
+          '''.replace('          ', '')
+          new = '''            if isinstance(raw, str) and raw.count("^") >= 2:
+                  coding = ((resource.get("code") or {}).get("coding") or [{}])[0]
+                  packed_strings.append(
+                      {
+                          "resource_id": resource_id,
+                          "observation_code": coding.get("code") if isinstance(coding, dict) else None,
+                          "valueString": raw[:200],
+                      }
+                  )
+          '''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('preflight packed-string block not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('connectathon/scenarios.py')
+          text = path.read_text()
+          old = '''    if control_gate["status"] != "PASS":
+              failed = [row["check"] for row in control_gate["checks"] if row["status"] == "FAIL"]
+              raise ValueError(
+                  "Baseline failed the PIQI control quality gate; refusing to build mutants. "
+                  f"Failed checks: {', '.join(failed)}"
+              )
+          '''.replace('          ', '')
+          new = '''    if control_gate["status"] != "PASS":
+              failed = [row for row in control_gate["checks"] if row["status"] == "FAIL"]
+              detail = "; ".join(f"{row['check']}: {row['detail']}" for row in failed)
+              raise ValueError(
+                  "Baseline failed the PIQI control quality gate; refusing to build mutants. "
+                  f"Failed checks: {detail}"
+              )
+          '''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('scenario quality-gate error block not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('tests/test_connectathon_piqitt_integration.py')
+          text = path.read_text()
+          old = '            "OBX|1|NM|4548-4^Hemoglobin A1c^LN||6.1|%|||||F|||20260901100000",\n'
+          new = old + '            "OBX|2|CWE|76691-5^Gender identity^LN||X-LOCAL^Synthetic coded value^99MEDILACRA|||||F|||20260901100000",\n'
+          if old not in text:
+              raise SystemExit('integration fixture OBX not found')
+          text = text.replace(old, new, 1)
+
+          marker = '''    assert "Observation" in resource_types
+          '''
+          addition = '''    assert "Observation" in resource_types
+
+              coded_observation = next(
+                  entry["resource"]
+                  for entry in bundle["entry"]
+                  if entry["resource"].get("resourceType") == "Observation"
+                  and ((entry["resource"].get("code") or {}).get("coding") or [{}])[0].get("code") == "76691-5"
+              )
+              assert "valueString" not in coded_observation
+              coded_value = coded_observation["valueCodeableConcept"]["coding"][0]
+              assert coded_value["code"] == "X-LOCAL"
+              assert coded_value["system"] == "urn:hl7v2:99MEDILACRA"
+              assert metadata["piqitt_coded_obx_compatibility"]["repaired"] == 1
+          '''.replace('          ', '')
+          if marker not in text:
+              raise SystemExit('integration assertion marker not found')
+          path.write_text(text.replace(marker, addition, 1))
+          PY
+
+      - name: Compile changed PIQI modules
+        run: |
+          python -m py_compile \
+            connectathon/fhir_control.py \
+            connectathon/piqitt_bridge.py \
+            connectathon/preflight.py \
+            connectathon/scenarios.py
+
+      - name: Run Connectathon regression suites
+        env:
+          PIQITT_REPO: ${{ github.workspace }}/_piqitt
+        run: |
+          python -m pip install pytest
+          python -m pytest -q \
+            tests/test_connectathon_fhir_corruptions.py \
+            tests/test_connectathon_control_quality.py \
+            tests/test_connectathon_scenarios.py \
+            tests/test_connectathon_piqitt_integration.py
+
+      - name: Commit fix
+        run: |
+          rm -rf _piqitt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add connectathon/fhir_control.py connectathon/piqitt_bridge.py \
+            connectathon/preflight.py connectathon/scenarios.py \
+            tests/test_connectathon_piqitt_integration.py
+          git commit -m "Repair PIQITT CWE coded values at Connectathon boundary"
+          git push origin integrate/piqi-43
