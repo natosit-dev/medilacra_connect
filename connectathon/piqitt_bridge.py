@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
+import re
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -9,7 +11,8 @@ from typing import Any
 from connectathon.fhir_control import _coded_value_from_string, prepare_control_bundle
 
 
-_BACKEND_CACHE: dict[str, ModuleType] = {}
+_BACKEND_CACHE: dict[tuple[str, str], ModuleType] = {}
+_HL7_UTC_OFFSET = re.compile(r"(?P<sign>[+-])(?P<hours>\d{2})(?P<minutes>\d{2})$")
 
 
 def default_piqitt_repo() -> Path:
@@ -27,11 +30,22 @@ def backend_path(piqitt_repo: str | Path | None = None) -> Path:
     return repo / "scripts" / "fhir_convert_backend.py"
 
 
+def backend_sha256(piqitt_repo: str | Path | None = None) -> str:
+    path = backend_path(piqitt_repo)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def load_backend(piqitt_repo: str | Path | None = None) -> ModuleType:
     """Load PIQITT's existing converter directly from its checkout.
 
     This deliberately avoids copying PIQITT mapping code into MediLacra. The local PIQITT
     repository remains the source of truth for HL7 -> FHIR conversion.
+
+    The cache key includes the converter file hash. Updating or switching the PIQITT
+    checkout therefore reloads changed converter code instead of leaving a long-running
+    Streamlit session attached to a stale module.
     """
     path = backend_path(piqitt_repo)
     if not path.exists():
@@ -39,9 +53,16 @@ def load_backend(piqitt_repo: str | Path | None = None) -> ModuleType:
             f"PIQITT converter not found at {path}. Set PIQITT_REPO or select the local PIQITT checkout."
         )
 
-    cache_key = str(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    cache_key = (str(path), digest)
     if cache_key in _BACKEND_CACHE:
         return _BACKEND_CACHE[cache_key]
+
+    # Drop stale versions of the same checkout path so a long-running UI cannot
+    # accidentally retain converter code from an earlier revision.
+    for key in list(_BACKEND_CACHE):
+        if key[0] == str(path) and key != cache_key:
+            _BACKEND_CACHE.pop(key, None)
 
     module_name = f"piqitt_fhir_convert_backend_{abs(hash(cache_key))}"
     spec = importlib.util.spec_from_file_location(module_name, path)
@@ -123,16 +144,36 @@ def _repair_piqitt_coded_obx_values(
     return report
 
 
+def _source_utc_offset(parsed: dict[str, Any], backend: ModuleType) -> str | None:
+    """Recover an explicit UTC offset from MSH-7 when the source HL7 supplies one."""
+    msh_entries = parsed.get("MSH") or []
+    if not msh_entries:
+        return None
+    first = msh_entries[0]
+    fields = first.get("_fields", []) if isinstance(first, dict) else []
+    raw = str(backend.get_msh_field(fields, 7) or "").strip()
+    match = _HL7_UTC_OFFSET.search(raw)
+    if not match:
+        return None
+    return f"{match.group('sign')}{match.group('hours')}:{match.group('minutes')}"
+
+
 def convert_hl7_text(
     hl7_text: str,
     message_index: int = 1,
     piqitt_repo: str | Path | None = None,
+    source_timezone: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Convert one 1-based HL7 message to the PIQI Connectathon FHIR control representation.
 
     PIQITT performs the actual HL7 -> FHIR mapping. The Connectathon layer then removes
     message-transport semantics and normalizes the resulting Bundle into a self-contained
     collection suitable for baseline/mutation experiments.
+
+    When MSH-7 contains an explicit UTC offset, that offset is preserved when PIQITT has
+    emitted naive FHIR dateTimes. Otherwise ``source_timezone`` may supply the sender's
+    IANA timezone. If neither is available, the conversion process's local timezone is
+    used rather than asserting UTC.
     """
     backend = load_backend(piqitt_repo)
     messages = backend.split_messages(hl7_text)
@@ -143,16 +184,24 @@ def convert_hl7_text(
 
     selected_message = messages[message_index - 1]
     parsed = backend.parse_hl7(selected_message)
+    source_offset = _source_utc_offset(parsed, backend)
     raw_bundle, message_type = backend.convert_message_to_bundle(selected_message)
     coded_value_compatibility = _repair_piqitt_coded_obx_values(raw_bundle, parsed, backend)
-    bundle, cleanup = prepare_control_bundle(raw_bundle)
+    bundle, cleanup = prepare_control_bundle(
+        raw_bundle,
+        source_timezone=source_timezone,
+        source_utc_offset=source_offset,
+    )
     metadata = {
         "message_index": message_index,
         "message_count": len(messages),
         "message_type": message_type,
         "piqitt_backend": str(backend_path(piqitt_repo)),
+        "piqitt_backend_sha256": backend_sha256(piqitt_repo),
         "piqitt_raw_bundle_type": raw_bundle.get("type"),
         "piqitt_coded_obx_compatibility": coded_value_compatibility,
+        "source_timezone_configured": source_timezone,
+        "source_utc_offset_from_msh7": source_offset,
         "connectathon_bundle_type": bundle.get("type"),
         "connectathon_cleanup": cleanup,
     }
@@ -163,9 +212,15 @@ def convert_hl7_file(
     input_path: str | Path,
     message_index: int = 1,
     piqitt_repo: str | Path | None = None,
+    source_timezone: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     path = Path(input_path)
     raw = path.read_text(encoding="utf-8", errors="ignore")
-    bundle, metadata = convert_hl7_text(raw, message_index=message_index, piqitt_repo=piqitt_repo)
+    bundle, metadata = convert_hl7_text(
+        raw,
+        message_index=message_index,
+        piqitt_repo=piqitt_repo,
+        source_timezone=source_timezone,
+    )
     metadata["source_file"] = str(path.resolve())
     return bundle, metadata
