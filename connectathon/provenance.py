@@ -82,16 +82,27 @@ def build_source_provenance(
     source_name: str | None,
     medilacra_root: str | Path,
     piqitt_repo: str | Path,
+    *,
+    source_path: str | Path | None = None,
 ) -> dict[str, Any]:
+    """Build source provenance without treating display names as filesystem paths.
+
+    ``source_name`` is descriptive metadata and may come from a browser upload. Only an
+    explicitly supplied ``source_path`` is eligible for local-file or Disco-run provenance.
+    This prevents a coincidentally same-named local file from being attributed to an upload.
+    """
     provenance: dict[str, Any] = {
         "source_name": source_name,
         "source_hl7_sha256": sha256_text(hl7_text),
         "medilacra_revision": git_revision(medilacra_root),
         "piqitt_revision": git_revision(piqitt_repo),
     }
-    if source_name:
-        path = Path(source_name)
-        if path.exists():
-            provenance["source_file"] = str(path.resolve())
-            provenance.update(disco_provenance(path))
+
+    if source_path is not None:
+        path = Path(source_path).expanduser()
+        if path.exists() and path.is_file():
+            resolved = path.resolve()
+            provenance["source_file"] = str(resolved)
+            provenance.update(disco_provenance(resolved))
+
     return provenance
