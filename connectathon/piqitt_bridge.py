@@ -6,7 +6,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from connectathon.fhir_control import prepare_control_bundle
+from connectathon.fhir_control import _coded_value_from_string, prepare_control_bundle
 
 
 _BACKEND_CACHE: dict[str, ModuleType] = {}
@@ -71,6 +71,58 @@ def inspect_hl7_text(hl7_text: str, piqitt_repo: str | Path | None = None) -> li
     return summary
 
 
+def _repair_piqitt_coded_obx_values(
+    raw_bundle: dict[str, Any],
+    parsed: dict[str, Any],
+    backend: ModuleType,
+) -> dict[str, Any]:
+    """Repair PIQITT CE-family OBX values that fell through to valueString.
+
+    PIQITT main currently materializes OBX-2=CE as CodeableConcept but treats
+    CWE/CNE as generic strings. The original HL7 datatype is used as provenance,
+    so arbitrary narrative strings containing carets are never guessed to be coded.
+    """
+    observations = [
+        entry.get("resource")
+        for entry in raw_bundle.get("entry", [])
+        if isinstance(entry, dict)
+        and isinstance(entry.get("resource"), dict)
+        and entry["resource"].get("resourceType") == "Observation"
+    ]
+    obx_entries = parsed.get("OBX") or []
+    report: dict[str, Any] = {
+        "obx_count": len(obx_entries),
+        "observation_count": len(observations),
+        "repaired": 0,
+        "unresolved": [],
+    }
+
+    for index, (obx_entry, observation) in enumerate(zip(obx_entries, observations), start=1):
+        fields = obx_entry.get("_fields", []) if isinstance(obx_entry, dict) else []
+        value_type = str(backend.get_field(fields, 2) or "").upper()
+        if value_type not in {"CE", "CWE", "CNE"}:
+            continue
+        if "valueCodeableConcept" in observation:
+            continue
+
+        raw_value = backend.get_field(fields, 5)
+        if not raw_value or not isinstance(observation.get("valueString"), str):
+            continue
+
+        concept = _coded_value_from_string(raw_value, preserve_unknown_system=True)
+        if concept is None:
+            report["unresolved"].append(
+                {"obx_index": index, "value_type": value_type, "value": raw_value}
+            )
+            continue
+
+        observation.pop("valueString", None)
+        observation["valueCodeableConcept"] = concept
+        report["repaired"] += 1
+
+    return report
+
+
 def convert_hl7_text(
     hl7_text: str,
     message_index: int = 1,
@@ -89,7 +141,10 @@ def convert_hl7_text(
     if message_index < 1 or message_index > len(messages):
         raise IndexError(f"message_index {message_index} is outside 1..{len(messages)}")
 
-    raw_bundle, message_type = backend.convert_message_to_bundle(messages[message_index - 1])
+    selected_message = messages[message_index - 1]
+    parsed = backend.parse_hl7(selected_message)
+    raw_bundle, message_type = backend.convert_message_to_bundle(selected_message)
+    coded_value_compatibility = _repair_piqitt_coded_obx_values(raw_bundle, parsed, backend)
     bundle, cleanup = prepare_control_bundle(raw_bundle)
     metadata = {
         "message_index": message_index,
@@ -97,6 +152,7 @@ def convert_hl7_text(
         "message_type": message_type,
         "piqitt_backend": str(backend_path(piqitt_repo)),
         "piqitt_raw_bundle_type": raw_bundle.get("type"),
+        "piqitt_coded_obx_compatibility": coded_value_compatibility,
         "connectathon_bundle_type": bundle.get("type"),
         "connectathon_cleanup": cleanup,
     }
