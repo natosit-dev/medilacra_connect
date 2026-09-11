@@ -65,10 +65,9 @@ def test_real_piqitt_converter_can_feed_local_connectathon_pack(tmp_path: Path):
     assert len(run["cases"]) == 4
 
     code_system_case = load_case(run["run_dir"], "case_002_code_system")
-    assert code_system_case["manifest"]["changed_paths"]
-    observation = next(
-        entry["resource"]
-        for entry in code_system_case["mutant"]["entry"]
-        if entry["resource"]["resourceType"] == "Observation"
-    )
+    manifest = code_system_case["manifest"]
+    assert manifest["changed_paths"]
+    target_index = manifest["mutation"]["entry_index"]
+    observation = code_system_case["mutant"]["entry"][target_index]["resource"]
+    assert observation["resourceType"] == "Observation"
     assert "system" not in observation["code"]["coding"][0]
