@@ -53,12 +53,20 @@ def _bundle_resource_counts(bundle: dict) -> dict[str, int]:
 def _scenario_applicable(bundle: dict, scenario: dict) -> bool:
     if scenario["operator"] == "control":
         return True
+    allowed_systems = set(scenario.get("candidate_coding_systems") or [])
     for entry in bundle.get("entry", []):
         resource = entry.get("resource", {}) if isinstance(entry, dict) else {}
         if resource.get("resourceType") != scenario.get("resource"):
             continue
-        if path_exists(resource, scenario.get("path") or ""):
-            return True
+        if not path_exists(resource, scenario.get("path") or ""):
+            continue
+        if allowed_systems:
+            codings = ((resource.get("code") or {}).get("coding") or [])
+            first = codings[0] if codings else None
+            system = first.get("system") if isinstance(first, dict) else None
+            if system not in allowed_systems:
+                continue
+        return True
     return False
 
 
@@ -66,16 +74,29 @@ def _json_bytes(payload: dict) -> bytes:
     return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
-def _read_selected_source(mode: str, uploaded_file, local_file: str | None) -> tuple[str | None, str | None]:
+def _read_selected_source(
+    mode: str,
+    uploaded_file,
+    local_file: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Return text, display name, and an explicit local path when one exists."""
     if mode == "Upload HL7":
         if uploaded_file is None:
-            return None, None
-        return uploaded_file.getvalue().decode("utf-8", errors="ignore"), uploaded_file.name
+            return None, None, None
+        return (
+            uploaded_file.getvalue().decode("utf-8", errors="ignore"),
+            uploaded_file.name,
+            None,
+        )
 
     if not local_file:
-        return None, None
+        return None, None, None
     path = Path(local_file)
-    return path.read_text(encoding="utf-8", errors="ignore"), str(path)
+    return (
+        path.read_text(encoding="utf-8", errors="ignore"),
+        str(path),
+        str(path.resolve()),
+    )
 
 
 st.title("🧪 PIQI Connectathon 43")
@@ -112,7 +133,18 @@ piqitt_default = str(default_piqitt_repo())
 piqitt_repo = st.text_input(
     "Local PIQITT repository",
     value=os.getenv("PIQITT_REPO", piqitt_default),
-    help="Expected to contain scripts/fhir_convert_backend.py. Default assumes medilacra and piqitt are sibling folders.",
+    help="Expected to contain scripts/fhir_convert_backend.py. Default assumes medilacra_connect and piqitt are sibling folders.",
+)
+
+source_timezone = st.text_input(
+    "Source timezone for HL7 timestamps without an offset (optional)",
+    value=os.getenv("MEDILACRA_SOURCE_TZ", ""),
+    placeholder="America/New_York",
+    help=(
+        "Use an IANA timezone when the source system emits local clock times without an offset. "
+        "If MSH-7 already includes an offset, that source offset wins. If this is blank and no "
+        "offset exists, the conversion process's local timezone is used."
+    ),
 )
 
 backend = backend_path(piqitt_repo)
@@ -139,7 +171,7 @@ if source_mode == "Existing MediLacra / Disco output":
 else:
     uploaded = st.file_uploader("Drop one MediLacra HL7/.txt file", type=["hl7", "txt"])
 
-source_text, source_name = _read_selected_source(source_mode, uploaded, selected_local)
+source_text, source_name, source_path = _read_selected_source(source_mode, uploaded, selected_local)
 message_summary: list[dict] = []
 message_index = 1
 
@@ -174,11 +206,13 @@ if st.button(
             source_text,
             message_index=int(message_index),
             piqitt_repo=piqitt_repo,
+            source_timezone=source_timezone.strip() or None,
         )
         metadata.update(
             build_source_provenance(
                 source_text,
                 source_name=source_name,
+                source_path=source_path,
                 medilacra_root=MEDILACRA_ROOT,
                 piqitt_repo=piqitt_repo,
             )
@@ -247,7 +281,7 @@ selected_case_ids = st.multiselect(
     options=available_case_ids,
     default=available_case_ids,
     format_func=lambda case_id: scenario_labels[case_id],
-    help="The three non-control SAM targets remain provisional until the track kickoff confirms the rubric targets.",
+    help="The three non-control SAM targets remain provisional until the track confirms the rubric targets.",
 )
 mutation_seed = int(st.number_input("Mutation seed", value=666, step=1))
 
