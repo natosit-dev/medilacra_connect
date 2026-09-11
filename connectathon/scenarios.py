@@ -54,11 +54,15 @@ DEFAULT_SCENARIOS: tuple[dict[str, Any], ...] = (
     },
     {
         "case_id": "case_003_invalid_member",
-        "label": "Conformity — replace Observation code with known non-member",
+        "label": "Conformity — replace LOINC Observation code with known non-member",
         "operator": "replace_value",
         "resource": "Observation",
         "path": "code.coding[0].code",
         "replacement": "ZZZ-NOT-A-VALID-CODE",
+        # Membership only has a meaningful declared test boundary when the source
+        # coding is bound to a terminology we can identify. Do not target local
+        # urn:hl7v2:* systems for this scenario.
+        "candidate_coding_systems": ["http://loinc.org"],
         "expected": {
             "sam": "CONCEPT_ISVALIDMEMBER",
             "dimension": "CONF_INCOMP",
@@ -109,10 +113,11 @@ def build_scenario_pack(
     """
     control_gate = control_quality_gate(baseline_bundle)
     if control_gate["status"] != "PASS":
-        failed = [row["check"] for row in control_gate["checks"] if row["status"] == "FAIL"]
+        failed = [row for row in control_gate["checks"] if row["status"] == "FAIL"]
+        detail = "; ".join(f"{row['check']}: {row['detail']}" for row in failed)
         raise ValueError(
             "Baseline failed the PIQI control quality gate; refusing to build mutants. "
-            f"Failed checks: {', '.join(failed)}"
+            f"Failed checks: {detail}"
         )
 
     run_id = run_id or utc_run_id()
