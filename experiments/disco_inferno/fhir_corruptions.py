@@ -138,16 +138,33 @@ def diff_json_paths(left: Any, right: Any, prefix: str = "") -> list[str]:
     return [] if left == right else [prefix]
 
 
-def _candidate_resources(bundle: dict[str, Any], resource_type: str, path: str) -> list[tuple[int, dict[str, Any]]]:
+def _candidate_resources(
+    bundle: dict[str, Any],
+    resource_type: str,
+    path: str,
+    *,
+    candidate_coding_systems: list[str] | tuple[str, ...] | None = None,
+) -> list[tuple[int, dict[str, Any]]]:
     candidates: list[tuple[int, dict[str, Any]]] = []
+    allowed_systems = set(candidate_coding_systems or [])
+
     for entry_index, entry in enumerate(bundle.get("entry", [])):
         resource = entry.get("resource") if isinstance(entry, dict) else None
         if not isinstance(resource, dict):
             continue
         if resource.get("resourceType") != resource_type:
             continue
-        if path_exists(resource, path):
-            candidates.append((entry_index, resource))
+        if not path_exists(resource, path):
+            continue
+
+        if allowed_systems:
+            codings = ((resource.get("code") or {}).get("coding") or [])
+            first = codings[0] if codings else None
+            system = first.get("system") if isinstance(first, dict) else None
+            if system not in allowed_systems:
+                continue
+
+        candidates.append((entry_index, resource))
     return candidates
 
 
@@ -176,6 +193,7 @@ def apply_fhir_mutation(
                 "path": None,
                 "before": None,
                 "after": None,
+                "candidate_coding_systems": None,
             },
             "expected": copy.deepcopy(spec.get("expected", {})),
             "changed_paths": [],
@@ -184,10 +202,21 @@ def apply_fhir_mutation(
 
     resource_type = spec["resource"]
     path = spec["path"]
-    candidates = _candidate_resources(mutant, resource_type, path)
+    candidate_coding_systems = spec.get("candidate_coding_systems")
+    candidates = _candidate_resources(
+        mutant,
+        resource_type,
+        path,
+        candidate_coding_systems=candidate_coding_systems,
+    )
     if not candidates:
+        system_note = (
+            f" constrained to coding systems {candidate_coding_systems!r}"
+            if candidate_coding_systems
+            else ""
+        )
         raise ValueError(
-            f"Case {case_id}: no {resource_type} resource contains path {path!r}"
+            f"Case {case_id}: no {resource_type} resource contains path {path!r}{system_note}"
         )
 
     rng = random.Random(mutation_seed)
@@ -223,6 +252,7 @@ def apply_fhir_mutation(
             "path": path,
             "before": before,
             "after": after,
+            "candidate_coding_systems": copy.deepcopy(candidate_coding_systems),
         },
         "expected": copy.deepcopy(spec.get("expected", {})),
         "changed_paths": changed_paths,
