@@ -3,7 +3,9 @@ from __future__ import annotations
 import copy
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 FHIR_REFERENCE_NAMESPACE = uuid.UUID("f4b2f1d4-7793-4f32-b0d3-7c8d60ea6b43")
@@ -39,6 +41,7 @@ UCUM_BY_TEXT = {
 }
 
 _DATE_TIME_TZ = re.compile(r"(?:Z|[+-]\d{2}:?\d{2})$")
+_UTC_OFFSET = re.compile(r"^(?P<sign>[+-])(?P<hours>\d{2}):(?P<minutes>\d{2})$")
 
 
 def _drop_none(value: Any) -> Any:
@@ -98,18 +101,80 @@ def _normalize_encounter_class(resource: dict[str, Any]) -> bool:
     return True
 
 
-def _normalize_datetime_values(value: Any) -> int:
+def _offset_timezone(source_utc_offset: str) -> timezone:
+    match = _UTC_OFFSET.match(source_utc_offset)
+    if not match:
+        raise ValueError(
+            "source_utc_offset must be formatted as ±HH:MM, "
+            f"got {source_utc_offset!r}"
+        )
+    minutes = int(match.group("hours")) * 60 + int(match.group("minutes"))
+    if match.group("sign") == "-":
+        minutes *= -1
+    return timezone(timedelta(minutes=minutes))
+
+
+def _configured_timezone(source_timezone: str | None, source_utc_offset: str | None):
+    if source_utc_offset:
+        return _offset_timezone(source_utc_offset)
+    if source_timezone:
+        try:
+            return ZoneInfo(source_timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"Unknown IANA source timezone: {source_timezone!r}") from exc
+    return None
+
+
+def _normalize_datetime_values(
+    value: Any,
+    *,
+    source_timezone: str | None = None,
+    source_utc_offset: str | None = None,
+) -> int:
+    """Add a real source timezone to naive FHIR dateTime values.
+
+    PIQITT currently emits some clock-bearing dateTimes without timezone information.
+    We never append ``Z`` merely to make those strings valid because that would assert
+    that the source instant was UTC. Priority is:
+
+    1. explicit offset recovered from the source HL7 message,
+    2. explicitly configured IANA sender timezone,
+    3. the local timezone of the conversion process.
+
+    Already-zoned values are preserved unchanged.
+    """
     changed = 0
+    tzinfo = _configured_timezone(source_timezone, source_utc_offset)
+
     if isinstance(value, dict):
         for key, item in list(value.items()):
             if isinstance(item, str) and key.endswith("DateTime") and "T" in item and not _DATE_TIME_TZ.search(item):
-                value[key] = item + "Z"
+                try:
+                    parsed = datetime.fromisoformat(item)
+                except ValueError:
+                    continue
+
+                if tzinfo is not None:
+                    zoned = parsed.replace(tzinfo=tzinfo)
+                else:
+                    # For a naive datetime, astimezone() interprets the value in the
+                    # process-local timezone and applies the offset appropriate to that date.
+                    zoned = parsed.astimezone()
+                value[key] = zoned.isoformat()
                 changed += 1
             else:
-                changed += _normalize_datetime_values(item)
+                changed += _normalize_datetime_values(
+                    item,
+                    source_timezone=source_timezone,
+                    source_utc_offset=source_utc_offset,
+                )
     elif isinstance(value, list):
         for item in value:
-            changed += _normalize_datetime_values(item)
+            changed += _normalize_datetime_values(
+                item,
+                source_timezone=source_timezone,
+                source_utc_offset=source_utc_offset,
+            )
     return changed
 
 
@@ -216,18 +281,35 @@ def _rewrite_references(value: Any, reference_map: dict[str, str]) -> int:
     return changed
 
 
-def prepare_control_bundle(raw_bundle: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def prepare_control_bundle(
+    raw_bundle: dict[str, Any],
+    *,
+    source_timezone: str | None = None,
+    source_utc_offset: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Convert PIQITT's transport-shaped Bundle into a self-contained PIQI test artifact.
 
     PIQITT remains responsible for HL7 -> FHIR materialization. This Connectathon-only
     normalization removes FHIR Messaging transport semantics that are outside the PIQI
     track, makes the Bundle self-contained, and repairs known representation issues that
     would otherwise contaminate the control case.
+
+    ``source_utc_offset`` should be supplied when the original HL7 timestamp includes an
+    offset. ``source_timezone`` is an optional IANA fallback for source messages whose
+    clock-bearing timestamps do not include one. If neither is supplied, the conversion
+    process's local timezone is used rather than silently asserting UTC.
     """
     if raw_bundle.get("resourceType") != "Bundle":
         raise ValueError("PIQITT did not return a FHIR Bundle")
 
     bundle = copy.deepcopy(raw_bundle)
+    timezone_basis = (
+        f"HL7_OFFSET:{source_utc_offset}"
+        if source_utc_offset
+        else f"IANA:{source_timezone}"
+        if source_timezone
+        else "SYSTEM_LOCAL"
+    )
     report = {
         "raw_bundle_type": raw_bundle.get("type"),
         "bundle_type": "collection",
@@ -238,6 +320,7 @@ def prepare_control_bundle(raw_bundle: dict[str, Any]) -> tuple[dict[str, Any], 
         "coded_values_materialized": 0,
         "quantities_ucum_normalized": 0,
         "datetimes_zoned": 0,
+        "datetime_timezone_basis": timezone_basis,
         "empty_extensions_removed": 0,
     }
 
@@ -271,7 +354,11 @@ def prepare_control_bundle(raw_bundle: dict[str, Any]) -> tuple[dict[str, Any], 
         report["encounter_classes_mapped"] += int(_normalize_encounter_class(resource))
         report["coded_values_materialized"] += int(_normalize_coded_value(resource))
         report["quantities_ucum_normalized"] += int(_normalize_quantity(resource))
-        report["datetimes_zoned"] += _normalize_datetime_values(resource)
+        report["datetimes_zoned"] += _normalize_datetime_values(
+            resource,
+            source_timezone=source_timezone,
+            source_utc_offset=source_utc_offset,
+        )
 
     report["references_rewritten"] = _rewrite_references(bundle, reference_map)
     bundle = _drop_none(bundle)
