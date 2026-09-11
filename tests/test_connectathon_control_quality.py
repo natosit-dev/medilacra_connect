@@ -71,10 +71,14 @@ def _raw_message_bundle() -> dict:
 
 
 def test_prepare_control_bundle_removes_transport_and_repairs_known_semantics():
-    bundle, report = prepare_control_bundle(_raw_message_bundle())
+    bundle, report = prepare_control_bundle(
+        _raw_message_bundle(),
+        source_timezone="America/New_York",
+    )
 
     assert bundle["type"] == "collection"
     assert report["message_headers_removed"] == 1
+    assert report["datetime_timezone_basis"] == "IANA:America/New_York"
     assert all(entry.get("fullUrl", "").startswith("urn:uuid:") for entry in bundle["entry"])
     assert not any(entry["resource"]["resourceType"] == "MessageHeader" for entry in bundle["entry"])
 
@@ -91,14 +95,17 @@ def test_prepare_control_bundle_removes_transport_and_repairs_known_semantics():
     gender = next(entry["resource"] for entry in bundle["entry"] if entry["resource"].get("id") == "obs-gender")
     assert "valueString" not in gender
     assert gender["valueCodeableConcept"]["coding"][0]["system"] == "http://snomed.info/sct"
-    assert gender["effectiveDateTime"].endswith("Z")
+    assert gender["effectiveDateTime"].endswith("-04:00")
 
     assert preflight_bundle(bundle)["status"] == "PASS"
     assert control_quality_gate(bundle)["status"] == "PASS"
 
 
 def test_control_quality_gate_rejects_implausible_lipid_control():
-    bundle, _ = prepare_control_bundle(_raw_message_bundle())
+    bundle, _ = prepare_control_bundle(
+        _raw_message_bundle(),
+        source_timezone="America/New_York",
+    )
     patient_ref = bundle["entry"][0]["fullUrl"]
 
     def observation(obs_id: str, code: str, value: float) -> dict:
