@@ -3,7 +3,12 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from experiments.disco_inferno.disco import DESCRIPTION, inspect_text
+from experiments.disco_inferno.disco import (
+    DESCRIPTION,
+    inspect_text,
+    load_rules,
+    record_judgement,
+)
 
 
 st.title("🪩 DiScO")
@@ -25,6 +30,14 @@ with st.form("disco_judgement"):
         placeholder="Paste free text here...",
         help="Paste any text blob for deterministic feature inspection.",
     )
+    ai_generated = st.checkbox(
+        "AI generated",
+        value=False,
+        help=(
+            "Feedback metadata only. This label is stored with the judgement for later analysis "
+            "and does not affect the DiScO score."
+        ),
+    )
     judge = st.form_submit_button(
         "⚖️ JUDGEMENT",
         type="primary",
@@ -35,7 +48,19 @@ if judge:
     if not text.strip():
         st.warning("Paste some text first.")
     else:
-        profile = inspect_text(text)
+        rules = load_rules()
+        profile = inspect_text(text, rules=rules)
+        record = record_judgement(
+            text=text,
+            profile=profile,
+            ai_generated=ai_generated,
+            rules=rules,
+        )
+
+        st.caption(
+            f"Judgement saved locally: `{record['judgement_id']}` • "
+            f"AI generated = `{record['ai_generated']}`. The label did not affect scoring."
+        )
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Words", f"{profile.word_count:,}")
