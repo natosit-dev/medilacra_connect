@@ -31,6 +31,49 @@ The feature definitions live in `config.py`; the reusable detector engine lives 
 
 Same text + same configuration = same profile.
 
+## Feedback loop
+
+Each submitted judgement can be labelled `AI generated`. The label is metadata only and does not affect scoring.
+
+Judgements are appended locally to:
+
+```text
+data/disco/judgements.jsonl
+```
+
+Each record preserves:
+
+- the full submitted text
+- AI-generated label
+- deterministic DiScO profile
+- exact active rule snapshot
+- text SHA-256
+- rule-configuration SHA-256
+- UTC timestamp
+
+The repository already ignores `data/`, so the local corpus is not committed by ordinary Git workflows.
+
+## Disco Fever
+
+`pages/8_Disco_Fever.py` is the calibration page for DiScO. It can:
+
+- change feature weights
+- edit lexicon / stem dictionaries
+- edit regex patterns
+- reset the active configuration to checked-in defaults
+- summarize the locally stored feedback corpus
+- compare mean signal scores for AI-labelled vs not-marked-AI submissions
+- download the JSONL feedback corpus
+
+Mutable local rule overrides are stored at:
+
+```text
+data/disco/rules.json
+```
+
+Historical judgement records retain the exact rule snapshot used at scoring time, so later calibration does not rewrite provenance.
+
 ## UI
 
-`pages/8_DiScO.py` exposes the submodel as a Streamlit page adjacent to Disco Inferno.
+- `pages/8_DiScO.py` — submit text and run JUDGEMENT
+- `pages/8_Disco_Fever.py` — calibrate rules and inspect the feedback corpus
