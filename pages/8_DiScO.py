@@ -18,13 +18,20 @@ st.info(
     "The signal score is a simple weighted summary of deterministic observations, not a calibrated probability."
 )
 
-text = st.text_area(
-    "Text blob",
-    height=300,
-    placeholder="Paste an output to inspect...",
-)
+with st.form("disco_judgement"):
+    text = st.text_area(
+        "Free text",
+        height=300,
+        placeholder="Paste free text here...",
+        help="Paste any text blob for deterministic feature inspection.",
+    )
+    judge = st.form_submit_button(
+        "⚖️ JUDGEMENT",
+        type="primary",
+        use_container_width=True,
+    )
 
-if st.button("🪩 Inspect output", type="primary", use_container_width=True):
+if judge:
     if not text.strip():
         st.warning("Paste some text first.")
     else:
