@@ -1,1 +1,36 @@
-[]
+[
+  {
+    "id": "metaphor_vocabulary",
+    "label": "Metaphor vocabulary",
+    "kind": "lexicon",
+    "weight": 1.0,
+    "terms": ["substrate", "fabric", "vessel", "basin", "field", "landscape", "manifold", "resonance"]
+  },
+  {
+    "id": "mechanism_placeholders",
+    "label": "Mechanism placeholders",
+    "kind": "lexicon_stem",
+    "weight": 1.0,
+    "terms": ["shape", "steer", "align", "mediate", "emerge", "resonate", "transform"]
+  },
+  {
+    "id": "anthropomorphic_mechanism",
+    "label": "Anthropomorphic mechanism phrases",
+    "kind": "regex",
+    "weight": 1.0,
+    "pattern": "\\b(?:AI|LLM|model|system|algorithm)\\s+(?:wants?|remembers?|believes?|understands?|chooses?|refuses?|tries?)\\b"
+  },
+  {
+    "id": "nominalizations",
+    "label": "Nominalizations",
+    "kind": "regex",
+    "weight": 0.5,
+    "pattern": "\\b\\w+(?:tion|sion|ment|ness|ity|ance|ence|ism|ization)\\b"
+  },
+  {
+    "id": "unintroduced_acronyms",
+    "label": "Unintroduced acronyms",
+    "kind": "unintroduced_acronym",
+    "weight": 1.0
+  }
+]
