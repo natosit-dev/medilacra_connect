@@ -68,14 +68,22 @@ def _is_bounded_profile(record: dict) -> bool:
 # Aggregate corpus view -----------------------------------------------------
 st.markdown("## Corpus overview")
 
-semantic_scores = [_semantic_score(record) for record in records]
-ai_signals = [value for record in records if (value := _ai_signal(record)) is not None]
-word_counts = [_words(record) for record in records]
 ai_records = [record for record in records if record.get("ai_generated") is True]
 not_ai_records = [record for record in records if record.get("ai_generated") is not True]
 rule_versions = {str(record.get("rules_sha256", "")) for record in records if record.get("rules_sha256")}
 bounded_records = [record for record in records if _is_bounded_profile(record)]
 legacy_records = [record for record in records if not _is_bounded_profile(record)]
+
+# Never silently average the legacy density-multiplier scale together with the
+# bounded 0–1 scale. Once bounded records exist, aggregate calibration statistics
+# use only bounded records. Legacy records remain available for individual review.
+aggregate_records = bounded_records if bounded_records else records
+aggregate_model = "bounded" if bounded_records else "legacy"
+aggregate_ai_records = [record for record in aggregate_records if record.get("ai_generated") is True]
+aggregate_not_ai_records = [record for record in aggregate_records if record.get("ai_generated") is not True]
+semantic_scores = [_semantic_score(record) for record in aggregate_records]
+ai_signals = [value for record in aggregate_records if (value := _ai_signal(record)) is not None]
+word_counts = [_words(record) for record in aggregate_records]
 
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Judgements", f"{len(records):,}")
@@ -90,15 +98,19 @@ s2.metric("Median AI signal", f"{median(ai_signals):.3f}" if ai_signals else "�
 s3.metric("Mean words", f"{mean(word_counts):,.0f}" if word_counts else "—")
 s4.metric("Bounded / legacy", f"{len(bounded_records)} / {len(legacy_records)}")
 
+st.caption(
+    f"Aggregate calibration statistics currently use `{aggregate_model}` records only "
+    f"(n={len(aggregate_records)}). All {len(records)} historical judgements remain available below."
+)
+
 if len(rule_versions) > 1 or legacy_records:
     st.info(
         "This corpus contains historical judgements produced under different scoring configurations. "
-        "Legacy density-multiplier scores and new bounded scores are preserved as originally stored and are not silently normalized together. "
-        "Aggregate values are descriptive only."
+        "Legacy density-multiplier scores and new bounded scores are preserved as originally stored and are not averaged together."
     )
 
 feature_rows: dict[str, dict] = {}
-for record in records:
+for record in aggregate_records:
     labelled_ai = record.get("ai_generated") is True
     for feature in _profile(record).get("features", []) or []:
         feature_id = str(feature.get("id", ""))
