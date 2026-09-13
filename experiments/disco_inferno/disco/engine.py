@@ -28,6 +28,7 @@ class FeatureResult:
     count: int
     rate_per_100_words: float
     weight: float
+    ai_weight: float
     matches: tuple[Match, ...]
 
 
@@ -37,6 +38,7 @@ class DiScOProfile:
     character_count: int
     features: tuple[FeatureResult, ...]
     signal_score: float
+    ai_signal_score: float
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -83,8 +85,9 @@ def inspect_text(
 ) -> DiScOProfile:
     """Create a deterministic feature inventory for one text blob.
 
-    The signal score is a simple weighted sum of feature rates per 100 words.
-    It is not a calibrated probability.
+    ``signal_score`` summarizes semantic reconstruction signals.
+    ``ai_signal_score`` separately summarizes style/provenance signals associated
+    with AI generation. Neither score is a calibrated probability.
     """
 
     word_count = len(WORD_RE.findall(text))
@@ -101,15 +104,18 @@ def inspect_text(
                 count=len(matches),
                 rate_per_100_words=rate,
                 weight=rule.weight,
+                ai_weight=rule.ai_weight,
                 matches=matches,
             )
         )
 
     score = sum(feature.rate_per_100_words * feature.weight for feature in features)
+    ai_score = sum(feature.rate_per_100_words * feature.ai_weight for feature in features)
 
     return DiScOProfile(
         word_count=word_count,
         character_count=len(text),
         features=tuple(features),
         signal_score=score,
+        ai_signal_score=ai_score,
     )
