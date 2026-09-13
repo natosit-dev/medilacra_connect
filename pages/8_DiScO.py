@@ -3,7 +3,15 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from experiments.disco_inferno.disco import DESCRIPTION, inspect_text, load_rules, record_judgement
+from experiments.disco_inferno.disco import (
+    DESCRIPTION,
+    DocHistoryUnavailable,
+    extract_document_text,
+    inspect_document_artifact,
+    inspect_text,
+    load_rules,
+    record_judgement,
+)
 
 
 st.title("🪩 DiScO")
@@ -17,13 +25,21 @@ st.info(
     "The raw feature inventory remains the canonical artifact."
 )
 
+input_mode = st.radio(
+    "Input source",
+    options=("Paste text", "Upload document"),
+    horizontal=True,
+)
+
 with st.form("disco_judgement"):
-    text = st.text_area(
-        "Free text",
-        height=300,
-        placeholder="Paste free text here...",
-        help="Paste any text blob for deterministic feature inspection.",
-    )
+    text = ""
+    uploaded_file = None
+    if input_mode == "Paste text":
+        text = st.text_area("Free text", height=300, placeholder="Paste free text here...")
+    else:
+        uploaded_file = st.file_uploader("DOCX or PDF", type=("docx", "pdf"))
+        st.caption("Uploaded files are scored as text and inspected with the existing doc_history package.")
+
     ai_generated = st.checkbox(
         "AI generated",
         value=False,
@@ -32,8 +48,26 @@ with st.form("disco_judgement"):
     judge = st.form_submit_button("⚖️ JUDGEMENT", type="primary", use_container_width=True)
 
 if judge:
+    artifact = None
+
+    if input_mode == "Upload document":
+        if uploaded_file is None:
+            st.warning("Upload a DOCX or PDF first.")
+            st.stop()
+        file_bytes = uploaded_file.getvalue()
+        try:
+            artifact = inspect_document_artifact(file_bytes, uploaded_file.name)
+            text = extract_document_text(file_bytes, uploaded_file.name)
+        except DocHistoryUnavailable as exc:
+            st.error(str(exc))
+            st.caption("Keep doc_history as a sibling checkout or set DOC_HISTORY_PATH to its repository root.")
+            st.stop()
+        except Exception as exc:
+            st.error(f"Could not inspect uploaded document: {type(exc).__name__}: {exc}")
+            st.stop()
+
     if not text.strip():
-        st.warning("Paste some text first.")
+        st.warning("No inspectable text was found.")
     else:
         rules = load_rules()
         profile = inspect_text(text, rules=rules)
@@ -42,11 +76,13 @@ if judge:
             profile=profile,
             ai_generated=ai_generated,
             rules=rules,
+            artifact=artifact,
         )
 
+        source_note = f" • file = `{artifact['filename']}`" if artifact is not None else ""
         st.caption(
             f"Judgement saved locally: `{record['judgement_id']}` • "
-            f"AI generated = `{record['ai_generated']}`. The label did not affect scoring."
+            f"AI generated = `{record['ai_generated']}`{source_note}. The label did not affect scoring."
         )
 
         m1, m2, m3, m4 = st.columns(4)
@@ -68,6 +104,39 @@ if judge:
         ]
         st.markdown("### DiScO profile")
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        if artifact is not None:
+            doc_history = artifact.get("doc_history", {}) or {}
+            embedded = doc_history.get("embedded_metadata", {}) or {}
+            core = embedded.get("core", {}) or {}
+            application = embedded.get("application", {}) or {}
+
+            st.markdown("### Document artifact inventory")
+            st.caption(
+                "Pulled by doc_history and stored with the judgement. These observations do not currently alter DiScO scoring."
+            )
+            a1, a2, a3, a4 = st.columns(4)
+            a1.metric("File type", str(doc_history.get("type", "—")).upper())
+            a2.metric("Size", f"{int(doc_history.get('size_bytes', 0) or 0):,} bytes")
+            a3.metric("Embedded creator", str(core.get("creator", "—")))
+            a4.metric("Word TotalTime", str(application.get("TotalTime", "—")))
+
+            clues = artifact.get("provenance_clues", []) or []
+            if clues:
+                with st.expander("doc_history provenance clues", expanded=True):
+                    for clue in clues:
+                        st.write(f"• {clue}")
+
+            timeline = artifact.get("timeline_events", []) or []
+            if timeline:
+                with st.expander("doc_history timeline events"):
+                    st.dataframe(pd.DataFrame(timeline), use_container_width=True, hide_index=True)
+
+            with st.expander("Extracted document text"):
+                st.text_area("Text sent to DiScO", value=text, height=320, disabled=True)
+
+            with st.expander("Raw doc_history dataset"):
+                st.json(doc_history)
 
         with st.expander("Explain matches"):
             for feature in profile.features:
