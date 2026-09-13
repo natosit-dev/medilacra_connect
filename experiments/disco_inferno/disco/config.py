@@ -7,7 +7,9 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "disco"
 RUNTIME_RULES_PATH = DATA_DIR / "rules.json"
-DEFAULT_RULES_PATH = Path(__file__).resolve().parent / "rules" / "defaults.json"
+RULES_DIR = Path(__file__).resolve().parent / "rules"
+DEFAULT_RULES_PATH = RULES_DIR / "defaults.json"
+AI_STYLE_RULES_PATH = RULES_DIR / "ai_style_structures.json"
 
 
 @dataclass(frozen=True)
@@ -80,7 +82,7 @@ def _load_rule_file(
     return tuple(_rule_from_dict(item, scoring_defaults=scoring_defaults) for item in raw)
 
 
-DEFAULT_RULES = _load_rule_file(DEFAULT_RULES_PATH)
+DEFAULT_RULES = _load_rule_file(DEFAULT_RULES_PATH) + _load_rule_file(AI_STYLE_RULES_PATH)
 
 
 def load_rules(path: Path = RUNTIME_RULES_PATH) -> tuple[FeatureRule, ...]:
