@@ -3,7 +3,9 @@
     "id": "metaphor_vocabulary",
     "label": "Metaphor vocabulary",
     "kind": "lexicon",
-    "weight": 0.5,
+    "semantic_max": 0.05,
+    "ai_max": 0.02,
+    "half_saturation": 2.0,
     "terms": [
       "substrate",
       "fabric",
@@ -25,7 +27,9 @@
     "id": "mechanism_placeholders",
     "label": "Mechanism placeholders",
     "kind": "lexicon_stem",
-    "weight": 0.5,
+    "semantic_max": 0.10,
+    "ai_max": 0.04,
+    "half_saturation": 2.0,
     "terms": [
       "shape",
       "steer",
@@ -50,27 +54,35 @@
     "id": "anthropomorphic_mechanism",
     "label": "Anthropomorphic mechanism phrases",
     "kind": "regex",
-    "weight": 1.0,
+    "semantic_max": 0.08,
+    "ai_max": 0.02,
+    "half_saturation": 0.5,
     "pattern": "\\b(?:AI|LLM|model|system|algorithm|agent|assistant)\\s+(?:wants?|remembers?|believes?|understands?|chooses?|refuses?|tries?|feels?|knows?|decides?|cares?|thinks?)\\b"
   },
   {
     "id": "nominalizations",
     "label": "Nominalizations",
     "kind": "regex",
-    "weight": 0.25,
+    "semantic_max": 0.01,
+    "ai_max": 0.03,
+    "half_saturation": 5.0,
     "pattern": "\\b\\w+(?:tion|sion|ment|ness|ity|ance|ence|ism|ization)\\b"
   },
   {
     "id": "unintroduced_acronyms",
     "label": "Unintroduced acronyms",
     "kind": "unintroduced_acronym",
-    "weight": 0.5
+    "semantic_max": 0.05,
+    "ai_max": 0.0,
+    "half_saturation": 2.0
   },
   {
     "id": "ready_made_phrases",
     "label": "Ready-made phrases",
     "kind": "lexicon",
-    "weight": 0.15,
+    "semantic_max": 0.08,
+    "ai_max": 0.08,
+    "half_saturation": 1.0,
     "terms": [
       "at the end of the day",
       "it is important to note",
@@ -107,7 +119,9 @@
     "id": "verbal_false_limbs",
     "label": "Verbal false limbs",
     "kind": "lexicon",
-    "weight": 0.4,
+    "semantic_max": 0.12,
+    "ai_max": 0.03,
+    "half_saturation": 1.0,
     "terms": [
       "make use of",
       "makes use of",
@@ -162,7 +176,9 @@
     "id": "dead_metaphors",
     "label": "Worn / dead metaphors",
     "kind": "lexicon",
-    "weight": 0.15,
+    "semantic_max": 0.05,
+    "ai_max": 0.02,
+    "half_saturation": 1.0,
     "terms": [
       "move the needle",
       "low-hanging fruit",
@@ -196,7 +212,9 @@
     "id": "prestige_diction",
     "label": "Prestige / intimidating diction",
     "kind": "lexicon",
-    "weight": 0.2,
+    "semantic_max": 0.08,
+    "ai_max": 0.05,
+    "half_saturation": 1.5,
     "terms": [
       "paradigm",
       "paradigm shift",
@@ -238,7 +256,9 @@
     "id": "semantically_sparse_words",
     "label": "Semantically sparse evaluative words",
     "kind": "lexicon",
-    "weight": 0.35,
+    "semantic_max": 0.18,
+    "ai_max": 0.08,
+    "half_saturation": 3.0,
     "terms": [
       "meaningful",
       "authentic",
@@ -288,7 +308,9 @@
     "id": "concealment_euphemisms",
     "label": "Concealment / euphemistic phrases",
     "kind": "lexicon",
-    "weight": 0.5,
+    "semantic_max": 0.16,
+    "ai_max": 0.0,
+    "half_saturation": 1.0,
     "terms": [
       "collateral damage",
       "population transfer",
@@ -316,8 +338,9 @@
     "id": "markdown_scaffolding",
     "label": "Markdown scaffolding",
     "kind": "regex",
-    "weight": 0.0,
-    "ai_weight": 0.1,
+    "semantic_max": 0.0,
+    "ai_max": 0.10,
+    "half_saturation": 10.0,
     "pattern": "(?m)^(?:#{1,6}\\s+|[-*+]\\s+|\\d+\\.\\s+|>\\s+|```[^\\n]*$|(?:-{3,}|\\*{3,}|_{3,})\\s*$)|\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__|`[^`\\n]+`"
   }
 ]
