@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from .cadence import inspect_sentence_cadence
 from .config import DATA_DIR, FeatureRule
 from .engine import DiScOProfile
 
@@ -34,8 +35,9 @@ def record_judgement(
     """Append one labelled judgement to local JSONL storage.
 
     The AI-generated label is metadata only. It does not participate in scoring.
-    File-backed judgements may additionally preserve the complete doc_history
-    artifact/provenance dataset used at submission time.
+    Sentence cadence is recorded as an unscored observation. File-backed
+    judgements may additionally preserve doc_history provenance data when that
+    optional enrichment layer is available.
     """
 
     record = {
@@ -47,6 +49,7 @@ def record_judgement(
         "rules_sha256": _rules_fingerprint(rules),
         "rules": [asdict(rule) for rule in rules],
         "profile": profile.as_dict(),
+        "sentence_cadence": asdict(inspect_sentence_cadence(text)),
     }
     if artifact is not None:
         record["artifact"] = artifact
