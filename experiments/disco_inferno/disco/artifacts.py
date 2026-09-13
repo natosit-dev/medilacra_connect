@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+import zipfile
+import xml.etree.ElementTree as ET
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -86,6 +88,40 @@ def inspect_document_artifact(data: bytes, filename: str) -> dict[str, Any]:
     }
 
 
+def _extract_docx_text(data: bytes) -> str:
+    """Extract DOCX body text directly from OOXML with the standard library.
+
+    DiScO only needs deterministic plain text for scoring, so it does not need
+    python-docx here. Reading word/document.xml directly also avoids conflicts
+    with the obsolete PyPI package named ``docx``.
+    """
+
+    word_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    p_tag = f"{{{word_ns}}}p"
+    t_tag = f"{{{word_ns}}}t"
+    tab_tag = f"{{{word_ns}}}tab"
+    break_tags = {f"{{{word_ns}}}br", f"{{{word_ns}}}cr"}
+
+    with zipfile.ZipFile(BytesIO(data)) as archive:
+        xml_bytes = archive.read("word/document.xml")
+
+    root = ET.fromstring(xml_bytes)
+    blocks: list[str] = []
+    for paragraph in root.iter(p_tag):
+        parts: list[str] = []
+        for node in paragraph.iter():
+            if node.tag == t_tag and node.text:
+                parts.append(node.text)
+            elif node.tag == tab_tag:
+                parts.append("\t")
+            elif node.tag in break_tags:
+                parts.append("\n")
+        text = "".join(parts).strip()
+        if text:
+            blocks.append(text)
+    return "\n".join(blocks)
+
+
 def extract_document_text(data: bytes, filename: str) -> str:
     """Extract text for DiScO scoring without changing doc_history metadata.
 
@@ -96,19 +132,7 @@ def extract_document_text(data: bytes, filename: str) -> str:
     suffix = Path(filename).suffix.lower()
 
     if suffix == ".docx":
-        from docx import Document
-
-        document = Document(BytesIO(data))
-        blocks: list[str] = []
-        for paragraph in document.paragraphs:
-            if paragraph.text:
-                blocks.append(paragraph.text)
-        for table in document.tables:
-            for row in table.rows:
-                cells = [cell.text.strip() for cell in row.cells]
-                if any(cells):
-                    blocks.append("\t".join(cells))
-        return "\n".join(blocks)
+        return _extract_docx_text(data)
 
     if suffix == ".pdf":
         from pypdf import PdfReader
