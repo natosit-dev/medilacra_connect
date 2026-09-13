@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from experiments.disco_inferno.disco import (
     DEFAULT_RULES,
     FeatureRule,
@@ -82,6 +86,131 @@ def test_concealment_euphemism_is_counted():
     assert _feature(profile, "concealment_euphemisms").count == 2
 
 
+def test_markdown_scaffolding_is_counted():
+    text = "**What to do now**\n1. **Check your temperature.**\n2. **Hydrate** and rest."
+    feature = _feature(inspect_text(text), "markdown_scaffolding")
+    assert feature.count >= 5
+
+
+def test_zero_matches_produce_zero_contribution():
+    rules = (
+        FeatureRule(
+            id="example",
+            label="Example",
+            kind="lexicon",
+            semantic_max=0.2,
+            ai_max=0.1,
+            half_saturation=1.0,
+            terms=("signal",),
+        ),
+    )
+    feature = _feature(inspect_text("nothing here", rules=rules), "example")
+    assert feature.strength == 0.0
+    assert feature.semantic_contribution == 0.0
+    assert feature.ai_contribution == 0.0
+
+
+def test_half_saturation_gives_half_maximum_contribution():
+    rules = (
+        FeatureRule(
+            id="example",
+            label="Example",
+            kind="lexicon",
+            semantic_max=0.2,
+            ai_max=0.1,
+            half_saturation=1.0,
+            terms=("signal",),
+        ),
+    )
+    text = "signal " + " ".join(["word"] * 99)
+    feature = _feature(inspect_text(text, rules=rules), "example")
+    assert feature.rate_per_100_words == pytest.approx(1.0)
+    assert feature.strength == pytest.approx(0.5)
+    assert feature.semantic_contribution == pytest.approx(0.1)
+    assert feature.ai_contribution == pytest.approx(0.05)
+
+
+def test_strength_is_monotonic_with_rate():
+    rules = (
+        FeatureRule(
+            id="example",
+            label="Example",
+            kind="lexicon",
+            semantic_max=0.2,
+            half_saturation=1.0,
+            terms=("signal",),
+        ),
+    )
+    low = _feature(inspect_text("signal " + " ".join(["word"] * 99), rules=rules), "example")
+    high = _feature(inspect_text(" ".join(["signal"] * 10 + ["word"] * 90), rules=rules), "example")
+    assert high.rate_per_100_words > low.rate_per_100_words
+    assert high.strength > low.strength
+    assert high.semantic_contribution > low.semantic_contribution
+
+
+def test_feature_contribution_never_exceeds_maximum():
+    rules = (
+        FeatureRule(
+            id="example",
+            label="Example",
+            kind="lexicon",
+            semantic_max=0.2,
+            ai_max=0.1,
+            half_saturation=0.01,
+            terms=("signal",),
+        ),
+    )
+    feature = _feature(inspect_text(" ".join(["signal"] * 1000), rules=rules), "example")
+    assert feature.semantic_contribution < 0.2
+    assert feature.ai_contribution < 0.1
+
+
+def test_total_signals_are_capped_at_one():
+    rules = (
+        FeatureRule(
+            id="foo",
+            label="Foo",
+            kind="lexicon",
+            semantic_max=0.8,
+            ai_max=0.8,
+            half_saturation=0.01,
+            terms=("foo",),
+        ),
+        FeatureRule(
+            id="bar",
+            label="Bar",
+            kind="lexicon",
+            semantic_max=0.8,
+            ai_max=0.8,
+            half_saturation=0.01,
+            terms=("bar",),
+        ),
+    )
+    profile = inspect_text(" ".join(["foo"] * 100 + ["bar"] * 100), rules=rules)
+    assert profile.signal_score == 1.0
+    assert profile.ai_signal_score == 1.0
+
+
+def test_markdown_regression_is_small_bounded_ai_nudge():
+    text = " ".join(["**x**"] * 38 + ["word"] * 315)
+    profile = inspect_text(text)
+    feature = _feature(profile, "markdown_scaffolding")
+    assert profile.word_count == 353
+    assert feature.count == 38
+    assert feature.rate_per_100_words == pytest.approx(10.7649, rel=1e-4)
+    assert feature.strength == pytest.approx(0.5184, rel=1e-3)
+    assert feature.ai_max == pytest.approx(0.10)
+    assert feature.ai_contribution == pytest.approx(0.05184, rel=1e-3)
+    assert feature.semantic_contribution == 0.0
+
+
+def test_nominalization_semantic_contribution_is_capped_at_one_percent():
+    profile = inspect_text(" ".join(["transformation"] * 500))
+    feature = _feature(profile, "nominalizations")
+    assert feature.semantic_max == pytest.approx(0.01)
+    assert 0.0 < feature.semantic_contribution < 0.01
+
+
 def test_same_text_same_profile():
     text = "The model wants a semantic substrate."
     assert inspect_text(text).as_dict() == inspect_text(text).as_dict()
@@ -94,12 +223,36 @@ def test_runtime_rule_round_trip(tmp_path):
             id="example",
             label="Example",
             kind="lexicon",
-            weight=2.5,
+            semantic_max=0.25,
+            ai_max=0.05,
+            half_saturation=2.0,
             terms=("foo", "bar"),
         ),
     )
     save_rules(rules, path=path)
-    assert load_rules(path=path) == rules
+    loaded = load_rules(path=path)
+    example = next(rule for rule in loaded if rule.id == "example")
+    assert example == rules[0]
+
+
+def test_legacy_local_override_inherits_bounded_scoring_and_new_defaults(tmp_path):
+    path = tmp_path / "rules.json"
+    legacy = [
+        {
+            "id": "nominalizations",
+            "label": "Nominalizations",
+            "kind": "regex",
+            "weight": 99.0,
+            "pattern": r"\bfoo\b",
+        }
+    ]
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    loaded = load_rules(path=path)
+    nominalizations = next(rule for rule in loaded if rule.id == "nominalizations")
+    markdown = next(rule for rule in loaded if rule.id == "markdown_scaffolding")
+    assert nominalizations.semantic_max == pytest.approx(0.01)
+    assert nominalizations.pattern == r"\bfoo\b"
+    assert markdown.ai_max == pytest.approx(0.10)
 
 
 def test_ai_generated_feedback_is_metadata_only(tmp_path):
@@ -120,3 +273,4 @@ def test_ai_generated_feedback_is_metadata_only(tmp_path):
     assert records[0]["ai_generated"] is True
     assert records[0]["text"] == text
     assert records[0]["profile"]["signal_score"] == profile.signal_score
+    assert records[0]["profile"]["ai_signal_score"] == profile.ai_signal_score
