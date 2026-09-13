@@ -67,9 +67,10 @@ The checked-in text defaults currently inventory:
 9. Prestige / intimidating diction
 10. Semantically sparse evaluative words
 11. Concealment / euphemistic phrases
-12. Markdown scaffolding
+12. Em dash usage
+13. Markdown scaffolding
 
-The later rule families are informed by the current Mao / Orwell provenance work, but they remain candidate signals rather than validated measurements of slop. Markdown scaffolding is currently treated as an AI-oriented style/provenance signal, not a semantic-slop signal.
+The later rule families are informed by the current Mao / Orwell provenance work, but they remain candidate signals rather than validated measurements of slop. Em dash usage and Markdown scaffolding are currently treated as AI-oriented style/provenance signals, not semantic-slop signals.
 
 The checked-in rule definitions, priors, phrase dictionaries, and regex patterns live in:
 
