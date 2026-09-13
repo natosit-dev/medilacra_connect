@@ -10,7 +10,6 @@ from .artifacts import (
     inspect_document_artifact,
 )
 from .cadence import SentenceCadenceObservation, inspect_sentence_cadence, sentence_word_lengths
-from .cadence_feedback import record_judgement
 from .config import (
     DEFAULT_RULES,
     RUNTIME_RULES_PATH,
@@ -20,7 +19,7 @@ from .config import (
     save_rules,
 )
 from .engine import DiScOProfile, FeatureResult, Match, inspect_text
-from .feedback import FEEDBACK_PATH, load_judgements
+from .feedback import FEEDBACK_PATH, load_judgements, record_judgement
 from .guidance import (
     CADENCE_GUIDANCE,
     FEATURE_GUIDANCE,
