@@ -4,6 +4,11 @@ A Disco Inferno submodel for cheap, deterministic inventories of observable
 text features associated with semantic reconstruction cost.
 """
 
+from .artifacts import (
+    DocHistoryUnavailable,
+    extract_document_text,
+    inspect_document_artifact,
+)
 from .config import (
     DEFAULT_RULES,
     RUNTIME_RULES_PATH,
@@ -26,6 +31,9 @@ __all__ = [
     "FeatureResult",
     "FeatureRule",
     "Match",
+    "DocHistoryUnavailable",
+    "extract_document_text",
+    "inspect_document_artifact",
     "inspect_text",
     "load_judgements",
     "load_rules",
