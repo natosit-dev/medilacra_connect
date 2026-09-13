@@ -6,7 +6,12 @@ from statistics import mean, median
 import pandas as pd
 import streamlit as st
 
-from experiments.disco_inferno.disco import FEEDBACK_PATH, load_judgements
+from experiments.disco_inferno.disco import (
+    CADENCE_GUIDANCE,
+    FEEDBACK_PATH,
+    get_feature_guidance,
+    load_judgements,
+)
 
 
 st.title("🏛️ Discotorium")
@@ -275,9 +280,39 @@ if feature_detail_rows:
 else:
     st.caption("No stored feature profile.")
 
+cadence = selected.get("sentence_cadence", {}) or {}
+if cadence:
+    st.markdown("### Sentence cadence · unscored")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Sentences", f"{int(cadence.get('sentence_count', 0) or 0):,}")
+    c2.metric("Mean words", f"{float(cadence.get('mean_words', 0.0) or 0.0):.1f}")
+    c3.metric("Std. dev.", f"{float(cadence.get('std_dev_words', 0.0) or 0.0):.2f}")
+    c4.metric("Variation / mean", f"{float(cadence.get('coefficient_of_variation', 0.0) or 0.0):.2f}")
+    c5.metric("Range", f"{int(cadence.get('range_words', 0) or 0):,} words")
+    with st.expander("❓ Virgil on sentence cadence"):
+        st.write(CADENCE_GUIDANCE.summary)
+        st.markdown("**Why it might matter later**")
+        st.write(CADENCE_GUIDANCE.why_it_matters)
+        st.caption(f"Caveat: {CADENCE_GUIDANCE.caveat}")
+        st.code(
+            ", ".join(str(value) for value in cadence.get("sentence_lengths", []) or []),
+            language="text",
+        )
+
 with st.expander("Explain stored matches", expanded=True):
     for feature in profile.get("features", []) or []:
-        st.markdown(f"#### {feature.get('label', feature.get('id', 'Feature'))}")
+        feature_id = str(feature.get("id", ""))
+        guidance = get_feature_guidance(feature_id)
+        st.markdown(f"#### ❓ {feature.get('label', feature_id or 'Feature')}")
+        st.write(guidance.summary)
+        st.markdown("**Why it matters**")
+        st.write(guidance.why_it_matters)
+        st.caption(f"Caveat: {guidance.caveat}")
+        if guidance.orwell_quote:
+            st.markdown(f"> “{guidance.orwell_quote}”")
+            if guidance.orwell_source:
+                st.caption(guidance.orwell_source)
+
         matches = feature.get("matches", []) or []
         if not matches:
             st.caption("No matches.")
