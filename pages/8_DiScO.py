@@ -3,24 +3,17 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from experiments.disco_inferno.disco import (
-    DESCRIPTION,
-    inspect_text,
-    load_rules,
-    record_judgement,
-)
+from experiments.disco_inferno.disco import DESCRIPTION, inspect_text, load_rules, record_judgement
 
 
 st.title("🪩 DiScO")
 st.caption(DESCRIPTION)
 st.markdown(
     "**Disco Inferno submodel.** DiScO inventories cheap, observable text features "
-    "associated with semantic reconstruction cost. Same text + same configuration "
-    "produces the same profile."
+    "associated with semantic reconstruction cost. Same text + same configuration produces the same profile."
 )
 st.info(
-    "DiScO does not detect truth, intelligence, private understanding, or AI authorship. "
-    "The signal score is a simple weighted summary of deterministic observations, not a calibrated probability."
+    "The displayed scores are simple weighted summaries of deterministic observations, not calibrated probabilities."
 )
 
 with st.form("disco_judgement"):
@@ -33,16 +26,9 @@ with st.form("disco_judgement"):
     ai_generated = st.checkbox(
         "AI generated",
         value=False,
-        help=(
-            "Feedback metadata only. This label is stored with the judgement for later analysis "
-            "and does not affect the DiScO score."
-        ),
+        help="Feedback metadata only. The label is stored for later analysis and does not affect scoring.",
     )
-    judge = st.form_submit_button(
-        "⚖️ JUDGEMENT",
-        type="primary",
-        use_container_width=True,
-    )
+    judge = st.form_submit_button("⚖️ JUDGEMENT", type="primary", use_container_width=True)
 
 if judge:
     if not text.strip():
@@ -62,10 +48,11 @@ if judge:
             f"AI generated = `{record['ai_generated']}`. The label did not affect scoring."
         )
 
-        m1, m2, m3 = st.columns(3)
+        m1, m2, m3, m4 = st.columns(4)
         m1.metric("Words", f"{profile.word_count:,}")
         m2.metric("Characters", f"{profile.character_count:,}")
         m3.metric("Signal score", f"{profile.signal_score:.2f}")
+        m4.metric("AI signal", f"{profile.ai_signal_score:.2f}")
 
         rows = [
             {
@@ -73,6 +60,7 @@ if judge:
                 "Count": feature.count,
                 "Rate / 100 words": round(feature.rate_per_100_words, 2),
                 "Weight": feature.weight,
+                "AI weight": feature.ai_weight,
             }
             for feature in profile.features
         ]
