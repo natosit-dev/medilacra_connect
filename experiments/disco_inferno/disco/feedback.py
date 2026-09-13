@@ -29,10 +29,13 @@ def record_judgement(
     ai_generated: bool,
     rules: tuple[FeatureRule, ...],
     path: Path = FEEDBACK_PATH,
+    artifact: dict | None = None,
 ) -> dict:
     """Append one labelled judgement to local JSONL storage.
 
     The AI-generated label is metadata only. It does not participate in scoring.
+    File-backed judgements may additionally preserve the complete doc_history
+    artifact/provenance dataset used at submission time.
     """
 
     record = {
@@ -45,6 +48,8 @@ def record_judgement(
         "rules": [asdict(rule) for rule in rules],
         "profile": profile.as_dict(),
     }
+    if artifact is not None:
+        record["artifact"] = artifact
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
