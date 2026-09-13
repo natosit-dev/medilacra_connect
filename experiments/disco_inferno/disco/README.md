@@ -6,21 +6,55 @@ DiScO is a Disco Inferno submodel for cheap, deterministic inventories of observ
 
 ## Working boundary
 
-DiScO does **not** determine truth, intelligence, private understanding, or AI authorship. It inventories surface features in a text blob and optionally compresses them into bounded signal scores.
+DiScO does **not** determine truth, intelligence, private understanding, or AI authorship. It inventories observable features and optionally compresses them into bounded signal scores.
 
-The canonical artifact is the feature inventory. Scores are derived and replaceable.
+The canonical artifact is the inventory. Scores are derived and replaceable.
 
 ```text
-text blob
+text / document
   -> deterministic observations
   -> feature inventory
   -> bounded feature strengths
   -> bounded semantic / AI signals
 ```
 
+## Input modes
+
+`pages/8_DiScO.py` accepts either pasted text or an uploaded `.docx` / `.pdf` file.
+
+For uploaded documents DiScO keeps two layers separate:
+
+1. **Text layer** — plain text is extracted and passed to the existing DiScO text engine.
+2. **Artifact layer** — DiScO imports the existing `doc_history` package and stores its complete provenance/metadata dataset with the judgement.
+
+The artifact layer is observational only for now. Document metadata does **not** currently alter semantic or AI scoring.
+
+DiScO intentionally reuses `natosit-dev/doc_history` rather than copying its extraction logic. It first tries a normal `import doc_history`, then looks for a sibling/local checkout. `DOC_HISTORY_PATH` can point to another checkout.
+
+Typical local layout:
+
+```text
+~/medilacra_connect_DiScO
+~/doc_history
+```
+
+The reused `doc_history` dataset includes, when present:
+
+- DOCX core/application/custom properties
+- creator and last modifier
+- created/modified/printed timestamps
+- Word `TotalTime`, application/version, template and document statistics
+- Track Changes state and surviving revision markup
+- RSIDs, comments/people parts and document IDs
+- custom XML / document-management provenance
+- PDF Info/XMP metadata, producer/creator software, document/instance IDs
+- exact uploaded-file SHA-256
+
+DiScO also stores `doc_history` timeline events and provenance clues as deterministic derived views of the same dataset.
+
 ## Active default feature set
 
-The checked-in defaults currently inventory:
+The checked-in text defaults currently inventory:
 
 1. Metaphor vocabulary
 2. Mechanism placeholders
@@ -43,7 +77,7 @@ The checked-in rule definitions, priors, phrase dictionaries, and regex patterns
 experiments/disco_inferno/disco/rules/defaults.json
 ```
 
-`config.py` owns the rule schema and loading behavior. The reusable detector/scoring engine lives in `engine.py`.
+`config.py` owns the rule schema and loading behavior. The reusable detector/scoring engine lives in `engine.py`. `artifacts.py` is the thin adapter between DiScO and the independent `doc_history` package.
 
 ## Bounded scoring model
 
@@ -56,9 +90,9 @@ contribution = max_contribution × strength
 
 Each rule exposes three scoring priors:
 
-- `semantic_max` — maximum contribution to the 0–1 semantic signal
-- `ai_max` — maximum contribution to the 0–1 AI-oriented signal
-- `half_saturation` — rate per 100 words where the feature reaches half of either maximum
+- `semantic_max` — semantic evidence budget: maximum contribution to the 0–1 semantic signal
+- `ai_max` — AI evidence budget: maximum contribution to the 0–1 AI-oriented signal
+- `half_saturation` — rate per 100 words where the feature reaches half of either budget
 
 Both final signals are capped at `1.0`. Neither is a calibrated probability.
 
@@ -70,7 +104,7 @@ experiments/disco_inferno/disco/docs/BOUNDED_SCORING_PROJECT_UPDATE_v0.2_2026-09
 
 ## Determinism
 
-Same text + same configuration = same profile.
+Same text + same configuration = same text profile. File-backed judgements additionally preserve the exact artifact dataset obtained from the uploaded bytes.
 
 ## Feedback loop
 
@@ -84,13 +118,14 @@ data/disco/judgements.jsonl
 
 Each record preserves:
 
-- the full submitted text
+- the full submitted/extracted text
 - AI-generated label
 - deterministic DiScO profile
 - exact active rule snapshot
 - text SHA-256
 - rule-configuration SHA-256
 - UTC timestamp
+- for file uploads: filename plus the complete `doc_history` result, provenance clues, and timeline events
 
 The repository already ignores `data/`, so the local corpus is not committed by ordinary Git workflows.
 
@@ -110,8 +145,8 @@ Saving from Disco Fever rewrites the local override in the current schema.
 
 `pages/8_Disco_Fever.py` is the calibration page for DiScO. It can:
 
-- change semantic maximum contribution
-- change AI maximum contribution
+- change semantic evidence budget
+- change AI evidence budget
 - change half-saturation rate
 - edit lexicon / stem dictionaries
 - edit regex patterns
@@ -130,13 +165,13 @@ Historical judgement records retain the exact rule snapshot used at scoring time
 - filter and select individual judgements
 - review the original text, stored profile, individual matches and character offsets
 - inspect the exact rule snapshot used for each judgement
-- inspect the raw stored JSON record
+- inspect the raw stored JSON record, including file artifact metadata when present
 - download the local JSONL corpus
 
 Discotorium reads historical records as stored; it does not silently rescore them with the current rules.
 
 ## UI
 
-- `pages/8_DiScO.py` — submit text and run JUDGEMENT
+- `pages/8_DiScO.py` — paste text or upload DOCX/PDF and run JUDGEMENT
 - `pages/8_Disco_Fever.py` — calibrate active rules and bounded scoring priors
 - `pages/8_Discotorium.py` — review stored judgements and aggregate corpus signals
