@@ -32,13 +32,23 @@ with st.form("disco_fever_rules"):
     for rule in rules:
         with st.expander(f"{rule.label} · `{rule.id}`", expanded=True):
             st.caption(f"Detector type: `{rule.kind}`")
-            weight = st.number_input(
-                "Weight",
-                value=float(rule.weight),
-                step=0.1,
-                key=f"weight-{rule.id}",
-                help="Weights affect only the derived signal score. Raw feature counts remain unchanged.",
-            )
+            weight_col, ai_weight_col = st.columns(2)
+            with weight_col:
+                weight = st.number_input(
+                    "Semantic weight",
+                    value=float(rule.weight),
+                    step=0.1,
+                    key=f"weight-{rule.id}",
+                    help="Contribution to the semantic signal score.",
+                )
+            with ai_weight_col:
+                ai_weight = st.number_input(
+                    "AI weight",
+                    value=float(rule.ai_weight),
+                    step=0.1,
+                    key=f"ai-weight-{rule.id}",
+                    help="Contribution to the separate AI-oriented signal score.",
+                )
 
             terms = rule.terms
             pattern = rule.pattern
@@ -64,7 +74,7 @@ with st.form("disco_fever_rules"):
                 ).strip()
             else:
                 st.caption(
-                    "This is currently a structural detector. Its weight is configurable; "
+                    "This is currently a structural detector. Its weights are configurable; "
                     "its underlying parser remains fixed in code."
                 )
 
@@ -74,6 +84,7 @@ with st.form("disco_fever_rules"):
                     label=rule.label,
                     kind=rule.kind,
                     weight=float(weight),
+                    ai_weight=float(ai_weight),
                     terms=terms,
                     pattern=pattern,
                 )
