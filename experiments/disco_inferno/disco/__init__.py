@@ -9,6 +9,8 @@ from .artifacts import (
     extract_document_text,
     inspect_document_artifact,
 )
+from .cadence import SentenceCadenceObservation, inspect_sentence_cadence, sentence_word_lengths
+from .cadence_feedback import record_judgement
 from .config import (
     DEFAULT_RULES,
     RUNTIME_RULES_PATH,
@@ -18,7 +20,7 @@ from .config import (
     save_rules,
 )
 from .engine import DiScOProfile, FeatureResult, Match, inspect_text
-from .feedback import FEEDBACK_PATH, load_judgements, record_judgement
+from .feedback import FEEDBACK_PATH, load_judgements
 
 DESCRIPTION = "Deterministic Inspection of Semantic Coupling in Outputs"
 
@@ -31,13 +33,16 @@ __all__ = [
     "FeatureResult",
     "FeatureRule",
     "Match",
+    "SentenceCadenceObservation",
     "DocHistoryUnavailable",
     "extract_document_text",
     "inspect_document_artifact",
+    "inspect_sentence_cadence",
     "inspect_text",
     "load_judgements",
     "load_rules",
     "record_judgement",
     "reset_rules",
     "save_rules",
+    "sentence_word_lengths",
 ]
