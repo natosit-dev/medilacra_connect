@@ -7,14 +7,30 @@ import pandas as pd
 import streamlit as st
 
 from experiments.disco_inferno.disco import (
+    CADENCE_GUIDANCE,
     DESCRIPTION,
+    METRIC_GUIDANCE,
+    VIRGIL_OVERVIEW,
     DocHistoryUnavailable,
     extract_document_text,
+    get_feature_guidance,
     inspect_document_artifact,
     inspect_text,
     load_rules,
     record_judgement,
 )
+
+
+def _render_feature_guidance(feature_id: str) -> None:
+    guidance = get_feature_guidance(feature_id)
+    st.write(guidance.summary)
+    st.markdown("**Why it matters**")
+    st.write(guidance.why_it_matters)
+    st.caption(f"Caveat: {guidance.caveat}")
+    if guidance.orwell_quote:
+        st.markdown(f"> “{guidance.orwell_quote}”")
+        if guidance.orwell_source:
+            st.caption(guidance.orwell_source)
 
 
 st.title("🪩 DiScO")
@@ -23,10 +39,21 @@ st.markdown(
     "**Disco Inferno submodel.** DiScO inventories cheap, observable text features "
     "associated with semantic reconstruction cost. Same text + same configuration produces the same profile."
 )
-st.info(
-    "Semantic signal and AI signal are bounded 0–1 summaries of deterministic observations, not calibrated probabilities. "
-    "The raw feature inventory remains the canonical artifact."
-)
+
+with st.expander("🕯️ Virgil — What am I looking at?", expanded=False):
+    st.write(VIRGIL_OVERVIEW)
+    st.markdown("**Semantic signal**")
+    st.write(METRIC_GUIDANCE["Semantic signal"])
+    st.markdown("**AI signal**")
+    st.write(METRIC_GUIDANCE["AI signal"])
+    st.markdown("**Count / rate / strength / contribution**")
+    st.write(
+        f"{METRIC_GUIDANCE['Count']} {METRIC_GUIDANCE['Rate / 100']} "
+        f"{METRIC_GUIDANCE['Strength']} {METRIC_GUIDANCE['Contribution']}"
+    )
+    st.markdown("**Sentence cadence**")
+    st.write(CADENCE_GUIDANCE.summary)
+    st.caption("Cadence is currently recorded as an observation only. It contributes to neither score.")
 
 input_mode = st.radio(
     "Input source",
@@ -142,6 +169,44 @@ if judge:
         st.markdown("### DiScO profile")
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+        st.markdown("#### ❓ Virgil's feature guide")
+        st.caption("Open any feature for a plain-language explanation, caveat, and Orwell only where he actually helps.")
+        for feature in profile.features:
+            with st.expander(f"❓ {feature.label} · {feature.count} match{'es' if feature.count != 1 else ''}"):
+                _render_feature_guidance(feature.id)
+                st.caption(
+                    f"rate={feature.rate_per_100_words:.3f}/100 · "
+                    f"half-saturation={feature.half_saturation:.3f} · "
+                    f"strength={feature.strength:.3f} · "
+                    f"semantic max={feature.semantic_max:.3f} · "
+                    f"AI max={feature.ai_max:.3f}"
+                )
+                if feature.matches:
+                    st.markdown("**Matches in this judgement**")
+                    st.code("\n".join(match.text for match in feature.matches), language="text")
+                else:
+                    st.caption("No matches in this judgement.")
+
+        cadence = record.get("sentence_cadence", {}) or {}
+        if cadence:
+            st.markdown("### Sentence cadence · unscored")
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Sentences", f"{int(cadence.get('sentence_count', 0) or 0):,}")
+            c2.metric("Mean words", f"{float(cadence.get('mean_words', 0.0) or 0.0):.1f}")
+            c3.metric("Std. dev.", f"{float(cadence.get('std_dev_words', 0.0) or 0.0):.2f}")
+            c4.metric("Variation / mean", f"{float(cadence.get('coefficient_of_variation', 0.0) or 0.0):.2f}")
+            c5.metric("Range", f"{int(cadence.get('range_words', 0) or 0):,} words")
+            with st.expander("❓ What do these cadence numbers mean?"):
+                st.write(CADENCE_GUIDANCE.summary)
+                st.markdown("**Why it might matter later**")
+                st.write(CADENCE_GUIDANCE.why_it_matters)
+                st.caption(f"Caveat: {CADENCE_GUIDANCE.caveat}")
+                st.markdown("**Raw sentence lengths**")
+                st.code(
+                    ", ".join(str(value) for value in cadence.get("sentence_lengths", []) or []),
+                    language="text",
+                )
+
         if artifact is not None:
             doc_history = artifact.get("doc_history") or {}
             provenance_problem = artifact.get("doc_history_unavailable") or artifact.get("doc_history_error")
@@ -187,21 +252,6 @@ if judge:
 
             with st.expander("Extracted document text"):
                 st.text_area("Text sent to DiScO", value=text, height=320, disabled=True)
-
-        with st.expander("Explain matches"):
-            for feature in profile.features:
-                st.markdown(f"#### {feature.label}")
-                st.caption(
-                    f"rate={feature.rate_per_100_words:.3f}/100 · "
-                    f"half-saturation={feature.half_saturation:.3f} · "
-                    f"strength={feature.strength:.3f} · "
-                    f"semantic max={feature.semantic_max:.3f} · "
-                    f"AI max={feature.ai_max:.3f}"
-                )
-                if not feature.matches:
-                    st.caption("No matches.")
-                    continue
-                st.code("\n".join(match.text for match in feature.matches), language="text")
 
         with st.expander("Raw profile JSON"):
             st.json(profile.as_dict())
