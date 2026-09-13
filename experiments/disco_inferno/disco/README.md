@@ -17,15 +17,31 @@ text blob
   -> optional weighted signal score
 ```
 
-## Initial feature set
+## Active default feature set
 
-1. Metaphor vocabulary density
-2. Mechanism-placeholder density
+The checked-in defaults currently inventory:
+
+1. Metaphor vocabulary
+2. Mechanism placeholders
 3. Anthropomorphic mechanism phrases
-4. Nominalization density
-5. Unintroduced acronym count
+4. Nominalizations
+5. Unintroduced acronyms
+6. Ready-made phrases
+7. Verbal false limbs
+8. Worn / dead metaphors
+9. Prestige / intimidating diction
+10. Semantically sparse evaluative words
+11. Concealment / euphemistic phrases
 
-The feature definitions live in `config.py`; the reusable detector engine lives in `engine.py`.
+The later rule families are informed by the current Mao / Orwell provenance work, but they remain candidate signals rather than validated measurements of slop.
+
+The checked-in rule definitions, weights, phrase dictionaries, and regex patterns live in:
+
+```text
+experiments/disco_inferno/disco/rules/defaults.json
+```
+
+`config.py` only owns the rule schema and loading behavior. The reusable detector engine lives in `engine.py`.
 
 ## Determinism
 
