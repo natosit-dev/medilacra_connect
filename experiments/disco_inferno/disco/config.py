@@ -7,6 +7,7 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "disco"
 RUNTIME_RULES_PATH = DATA_DIR / "rules.json"
+DEFAULT_RULES_PATH = Path(__file__).resolve().parent / "rules" / "defaults.json"
 
 
 @dataclass(frozen=True)
@@ -21,60 +22,6 @@ class FeatureRule:
     pattern: str | None = None
 
 
-DEFAULT_RULES: tuple[FeatureRule, ...] = (
-    FeatureRule(
-        id="metaphor_vocabulary",
-        label="Metaphor vocabulary",
-        kind="lexicon",
-        terms=(
-            "substrate",
-            "fabric",
-            "vessel",
-            "basin",
-            "field",
-            "landscape",
-            "manifold",
-            "resonance",
-        ),
-    ),
-    FeatureRule(
-        id="mechanism_placeholders",
-        label="Mechanism placeholders",
-        kind="lexicon_stem",
-        terms=(
-            "shape",
-            "steer",
-            "align",
-            "mediate",
-            "emerge",
-            "resonate",
-            "transform",
-        ),
-    ),
-    FeatureRule(
-        id="anthropomorphic_mechanism",
-        label="Anthropomorphic mechanism phrases",
-        kind="regex",
-        pattern=(
-            r"\b(?:AI|LLM|model|system|algorithm)\s+"
-            r"(?:wants?|remembers?|believes?|understands?|chooses?|refuses?|tries?)\b"
-        ),
-    ),
-    FeatureRule(
-        id="nominalizations",
-        label="Nominalizations",
-        kind="regex",
-        pattern=r"\b\w+(?:tion|sion|ment|ness|ity|ance|ence|ism|ization)\b",
-        weight=0.5,
-    ),
-    FeatureRule(
-        id="unintroduced_acronyms",
-        label="Unintroduced acronyms",
-        kind="unintroduced_acronym",
-    ),
-)
-
-
 def _rule_from_dict(raw: dict) -> FeatureRule:
     return FeatureRule(
         id=str(raw["id"]),
@@ -86,13 +33,20 @@ def _rule_from_dict(raw: dict) -> FeatureRule:
     )
 
 
+def _load_rule_file(path: Path) -> tuple[FeatureRule, ...]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return tuple(_rule_from_dict(item) for item in raw)
+
+
+DEFAULT_RULES = _load_rule_file(DEFAULT_RULES_PATH)
+
+
 def load_rules(path: Path = RUNTIME_RULES_PATH) -> tuple[FeatureRule, ...]:
-    """Load mutable local rules, falling back to checked-in defaults."""
+    """Load mutable local rules, falling back to checked-in JSON defaults."""
 
     if not path.exists():
         return DEFAULT_RULES
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return tuple(_rule_from_dict(item) for item in raw)
+    return _load_rule_file(path)
 
 
 def save_rules(
