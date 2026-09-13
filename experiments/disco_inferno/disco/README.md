@@ -24,12 +24,12 @@ text / document
 
 For uploaded documents DiScO keeps two layers separate:
 
-1. **Text layer** — plain text is extracted and passed to the existing DiScO text engine.
-2. **Artifact layer** — DiScO imports the existing `doc_history` package and stores its complete provenance/metadata dataset with the judgement.
+1. **Text layer** — plain text is extracted and passed to the existing DiScO text engine. This is the required scoring path.
+2. **Artifact layer** — if the reusable `doc_history` package is available, DiScO stores its richer provenance/metadata dataset with the judgement.
 
-The artifact layer is observational only for now. Document metadata does **not** currently alter semantic or AI scoring.
+The artifact layer is optional enrichment. A missing or failing `doc_history` checkout no longer blocks document scoring; DiScO still records the filename and uploaded-file SHA-256 and continues with extracted text.
 
-DiScO intentionally reuses `natosit-dev/doc_history` rather than copying its extraction logic. It first tries a normal `import doc_history`, then looks for a sibling/local checkout. `DOC_HISTORY_PATH` can point to another checkout.
+DiScO intentionally reuses `natosit-dev/doc_history` rather than copying its provenance logic. It first tries a normal `import doc_history`, then looks for a sibling/local checkout. `DOC_HISTORY_PATH` can point to another checkout.
 
 Typical local layout:
 
@@ -52,9 +52,11 @@ The reused `doc_history` dataset includes, when present:
 
 DiScO also stores `doc_history` timeline events and provenance clues as deterministic derived views of the same dataset.
 
+DOCX text extraction itself uses OOXML directly through the Python standard library. It does not depend on `python-docx`, which keeps scoring insulated from the obsolete PyPI package named `docx`.
+
 ## Active default feature set
 
-The checked-in text defaults currently inventory:
+The checked-in text defaults currently inventory these scored rule families:
 
 1. Metaphor vocabulary
 2. Mechanism placeholders
@@ -69,20 +71,63 @@ The checked-in text defaults currently inventory:
 11. Concealment / euphemistic phrases
 12. Em dash usage
 13. Markdown scaffolding
+14. Contrastive reframing
+15. Formulaic signposting
+16. Pseudo-conversational setup
+17. Punchy synthetic conclusions
+18. Label-colon scaffolding
 
-The later rule families are informed by the current Mao / Orwell provenance work, but they remain candidate signals rather than validated measurements of slop. Em dash usage and Markdown scaffolding are currently treated as AI-oriented style/provenance signals, not semantic-slop signals.
+The later rule families are candidate signals rather than validated measurements of slop. Em dash usage, Markdown scaffolding, and the five supplemental style structures are currently AI-oriented style/provenance signals rather than semantic-slop signals.
 
-The checked-in rule definitions, priors, phrase dictionaries, and regex patterns live in:
+The base checked-in rule definitions live in:
 
 ```text
 experiments/disco_inferno/disco/rules/defaults.json
 ```
 
+Supplemental AI-style structures live in:
+
+```text
+experiments/disco_inferno/disco/rules/ai_style_structures.json
+```
+
 `config.py` owns the rule schema and loading behavior. The reusable detector/scoring engine lives in `engine.py`. `artifacts.py` is the thin adapter between DiScO and the independent `doc_history` package.
+
+## Sentence cadence observations
+
+DiScO also records sentence cadence without assigning any semantic or AI contribution yet. Each judgement stores:
+
+- sentence count
+- raw sentence-length sequence in words
+- mean sentence length
+- population standard deviation
+- coefficient of variation (`std_dev / mean`)
+- shortest sentence
+- longest sentence
+- sentence-length range
+
+The raw sequence is canonical. The summaries are cheap derived observations that can be reinterpreted later without losing the original cadence data.
+
+Sentence splitting is deterministic and dependency-free. It protects a small set of common abbreviations, initials/initialisms, and decimal points before treating `.`, `?`, and `!` as terminators.
+
+## Virgil guidance layer
+
+`guidance.py` contains **Virgil**, the explanation layer for DiScO.
+
+Virgil is deliberately separate from rule configuration. Detector dictionaries, regexes, and scoring priors decide what DiScO observes; Virgil explains in plain language:
+
+- what a feature sees
+- why it may matter
+- an important caveat / likely false-positive mode
+- a short Orwell quotation only where it genuinely clarifies the detector
+
+This separation lets Disco Fever change calibration without silently rewriting the conceptual explanation of a feature.
+
+The main DiScO page places Virgil at the top as an expandable orientation guide and provides a collapsed `❓` explanation for every scored feature. Sentence cadence has its own Virgil explanation and remains explicitly marked unscored.
 
 ## Bounded scoring model
 
-Raw counts, match locations, and rates per 100 words remain the canonical observations. Each feature is compressed with the same asymptotic curve:
+Raw counts, match locations, and rates per 100 words remain the canonical observations. Each scored feature is compressed with the same asymptotic curve:
 
 ```text
 strength = rate / (rate + half_saturation)
@@ -105,7 +150,7 @@ experiments/disco_inferno/disco/docs/BOUNDED_SCORING_PROJECT_UPDATE_v0.2_2026-09
 
 ## Determinism
 
-Same text + same configuration = same text profile. File-backed judgements additionally preserve the exact artifact dataset obtained from the uploaded bytes.
+Same text + same configuration = same text profile. File-backed judgements additionally preserve the exact artifact dataset obtained from the uploaded bytes when `doc_history` is available, or the fallback file identity when it is not.
 
 ## Feedback loop
 
@@ -126,7 +171,10 @@ Each record preserves:
 - text SHA-256
 - rule-configuration SHA-256
 - UTC timestamp
-- for file uploads: filename plus the complete `doc_history` result, provenance clues, and timeline events
+- unscored sentence-cadence observations
+- for file uploads: filename and file identity, plus the complete `doc_history` result/provenance views when available
+
+Individual judgements can be downloaded as JSON from both the main DiScO page immediately after scoring and from Discotorium during later review.
 
 The repository already ignores `data/`, so the local corpus is not committed by ordinary Git workflows.
 
@@ -167,12 +215,13 @@ Historical judgement records retain the exact rule snapshot used at scoring time
 - review the original text, stored profile, individual matches and character offsets
 - inspect the exact rule snapshot used for each judgement
 - inspect the raw stored JSON record, including file artifact metadata when present
+- download an individual judgement as JSON
 - download the local JSONL corpus
 
 Discotorium reads historical records as stored; it does not silently rescore them with the current rules.
 
 ## UI
 
-- `pages/8_DiScO.py` — paste text or upload DOCX/PDF and run JUDGEMENT
+- `pages/8_DiScO.py` — paste text or upload DOCX/PDF, consult Virgil, and run JUDGEMENT
 - `pages/8_Disco_Fever.py` — calibrate active rules and bounded scoring priors
 - `pages/8_Discotorium.py` — review stored judgements and aggregate corpus signals
