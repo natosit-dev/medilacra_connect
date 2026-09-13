@@ -5,7 +5,7 @@ from statistics import mean, median
 import pandas as pd
 import streamlit as st
 
-from experiments.disco_inferno.disco import load_judgements
+from experiments.disco_inferno.disco import FEEDBACK_PATH, load_judgements
 
 
 st.title("🏛️ Discotorium")
@@ -108,6 +108,16 @@ if aggregate_feature_rows:
         "Mean score contribution", ascending=False
     )
     st.dataframe(aggregate_df, use_container_width=True, hide_index=True)
+
+if FEEDBACK_PATH.exists():
+    st.download_button(
+        "Download feedback corpus (JSONL)",
+        data=FEEDBACK_PATH.read_bytes(),
+        file_name="disco_judgements.jsonl",
+        mime="application/jsonl",
+        use_container_width=True,
+    )
+    st.caption(f"Local feedback corpus: `{FEEDBACK_PATH}`")
 
 
 # Individual judgement review ----------------------------------------------
