@@ -27,7 +27,7 @@
     "id": "mechanism_placeholders",
     "label": "Mechanism placeholders",
     "kind": "lexicon_stem",
-    "semantic_max": 0.10,
+    "semantic_max": 0.1,
     "ai_max": 0.04,
     "half_saturation": 2.0,
     "terms": [
@@ -54,10 +54,10 @@
     "id": "anthropomorphic_mechanism",
     "label": "Anthropomorphic mechanism phrases",
     "kind": "regex",
-    "semantic_max": 0.08,
+    "semantic_max": 0.25,
     "ai_max": 0.02,
     "half_saturation": 0.5,
-    "pattern": "\\b(?:AI|LLM|model|system|algorithm|agent|assistant)\\s+(?:wants?|remembers?|believes?|understands?|chooses?|refuses?|tries?|feels?|knows?|decides?|cares?|thinks?)\\b"
+    "pattern": "\\b(?:AI|LLM|model|system|algorithm|agent|assistant)\\s+(?:(?:has|have|had)\\s+)?(?:learn(?:s|ed|ing)?|wants?|remembers?|believes?|understands?|chooses?|refuses?|tries?|feels?|knows?|decides?|cares?|thinks?)\\b"
   },
   {
     "id": "nominalizations",
@@ -339,7 +339,7 @@
     "label": "Markdown scaffolding",
     "kind": "regex",
     "semantic_max": 0.0,
-    "ai_max": 0.10,
+    "ai_max": 0.1,
     "half_saturation": 10.0,
     "pattern": "(?m)^(?:#{1,6}\\s+|[-*+]\\s+|\\d+\\.\\s+|>\\s+|```[^\\n]*$|(?:-{3,}|\\*{3,}|_{3,})\\s*$)|\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__|`[^`\\n]+`"
   }
