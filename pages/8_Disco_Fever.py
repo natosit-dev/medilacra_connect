@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import re
-from statistics import mean
 
-import pandas as pd
 import streamlit as st
 
 from experiments.disco_inferno.disco import (
-    FEEDBACK_PATH,
     RUNTIME_RULES_PATH,
     FeatureRule,
-    load_judgements,
     load_rules,
     reset_rules,
     save_rules,
@@ -120,58 +116,4 @@ with reset_col:
 with path_col:
     st.caption(f"Local overrides: `{RUNTIME_RULES_PATH}`")
 
-
-st.markdown("## Feedback corpus")
-records = load_judgements()
-
-if not records:
-    st.info("No stored judgements yet. Run text through DiScO to begin the feedback corpus.")
-else:
-    ai_records = [record for record in records if record.get("ai_generated") is True]
-    unmarked_records = [record for record in records if record.get("ai_generated") is not True]
-
-    def _scores(items: list[dict]) -> list[float]:
-        return [float(item.get("profile", {}).get("signal_score", 0.0)) for item in items]
-
-    all_scores = _scores(records)
-    ai_scores = _scores(ai_records)
-    unmarked_scores = _scores(unmarked_records)
-
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Judgements", f"{len(records):,}")
-    m2.metric("AI generated", f"{len(ai_records):,}")
-    m3.metric("AI mean score", f"{mean(ai_scores):.2f}" if ai_scores else "—")
-    m4.metric(
-        "Not marked AI mean",
-        f"{mean(unmarked_scores):.2f}" if unmarked_scores else "—",
-    )
-
-    rows = []
-    for record in reversed(records[-100:]):
-        profile = record.get("profile", {})
-        rows.append(
-            {
-                "Recorded": record.get("recorded_at", ""),
-                "AI generated": bool(record.get("ai_generated", False)),
-                "Words": profile.get("word_count", 0),
-                "Signal score": round(float(profile.get("signal_score", 0.0)), 2),
-                "Text SHA": str(record.get("text_sha256", ""))[:12],
-                "Rules SHA": str(record.get("rules_sha256", ""))[:12],
-            }
-        )
-
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    st.caption(
-        "The table shows the most recent 100 judgements. Full text, profile, AI label, and rule snapshot "
-        "are stored in the local JSONL corpus."
-    )
-
-    if FEEDBACK_PATH.exists():
-        st.download_button(
-            "Download feedback corpus (JSONL)",
-            data=FEEDBACK_PATH.read_bytes(),
-            file_name="disco_judgements.jsonl",
-            mime="application/jsonl",
-            use_container_width=True,
-        )
-        st.caption(f"Local feedback corpus: `{FEEDBACK_PATH}`")
+st.caption("Use Discotorium to review stored judgements and corpus-level statistics.")
