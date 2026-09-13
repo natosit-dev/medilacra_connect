@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pandas as pd
@@ -40,7 +41,10 @@ with st.form("disco_judgement"):
         text = st.text_area("Free text", height=300, placeholder="Paste free text here...")
     else:
         uploaded_file = st.file_uploader("DOCX or PDF", type=("docx", "pdf"))
-        st.caption("Uploaded files are scored as text and inspected with the existing doc_history package.")
+        st.caption(
+            "Uploaded files are always scored from extracted text. If doc_history is available, "
+            "DiScO also records the richer document provenance dataset."
+        )
 
     ai_generated = st.checkbox(
         "AI generated",
@@ -56,17 +60,39 @@ if judge:
         if uploaded_file is None:
             st.warning("Upload a DOCX or PDF first.")
             st.stop()
+
         file_bytes = uploaded_file.getvalue()
+
+        # Text extraction is the required path for a DiScO judgement. Document
+        # provenance is optional enrichment and must never block text scoring.
+        try:
+            text = extract_document_text(file_bytes, uploaded_file.name)
+        except Exception as exc:
+            st.error(f"Could not extract text from uploaded document: {type(exc).__name__}: {exc}")
+            st.stop()
+
+        artifact = {
+            "source_type": "file",
+            "filename": uploaded_file.name,
+            "file_sha256": hashlib.sha256(file_bytes).hexdigest(),
+            "doc_history": None,
+            "timeline_events": [],
+            "provenance_clues": [],
+        }
+
         try:
             artifact = inspect_document_artifact(file_bytes, uploaded_file.name)
-            text = extract_document_text(file_bytes, uploaded_file.name)
         except DocHistoryUnavailable as exc:
-            st.error(str(exc))
-            st.caption("Keep doc_history as a sibling checkout or set DOC_HISTORY_PATH to its repository root.")
-            st.stop()
+            artifact["doc_history_unavailable"] = str(exc)
+            st.warning(
+                "Document provenance enrichment is unavailable because doc_history could not be imported. "
+                "DiScO will continue with normal text scoring."
+            )
         except Exception as exc:
-            st.error(f"Could not inspect uploaded document: {type(exc).__name__}: {exc}")
-            st.stop()
+            artifact["doc_history_error"] = f"{type(exc).__name__}: {exc}"
+            st.warning(
+                "doc_history could not inspect this document. DiScO will continue with normal text scoring."
+            )
 
     if not text.strip():
         st.warning("No inspectable text was found.")
@@ -117,37 +143,50 @@ if judge:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
         if artifact is not None:
-            doc_history = artifact.get("doc_history", {}) or {}
-            embedded = doc_history.get("embedded_metadata", {}) or {}
-            core = embedded.get("core", {}) or {}
-            application = embedded.get("application", {}) or {}
+            doc_history = artifact.get("doc_history") or {}
+            provenance_problem = artifact.get("doc_history_unavailable") or artifact.get("doc_history_error")
 
             st.markdown("### Document artifact inventory")
-            st.caption(
-                "Pulled by doc_history and stored with the judgement. These observations do not currently alter DiScO scoring."
-            )
-            a1, a2, a3, a4 = st.columns(4)
-            a1.metric("File type", str(doc_history.get("type", "—")).upper())
-            a2.metric("Size", f"{int(doc_history.get('size_bytes', 0) or 0):,} bytes")
-            a3.metric("Embedded creator", str(core.get("creator", "—")))
-            a4.metric("Word TotalTime", str(application.get("TotalTime", "—")))
 
-            clues = artifact.get("provenance_clues", []) or []
-            if clues:
-                with st.expander("doc_history provenance clues", expanded=True):
-                    for clue in clues:
-                        st.write(f"• {clue}")
+            if provenance_problem:
+                st.caption(
+                    "The uploaded file was scored successfully. Rich provenance inspection was unavailable for this judgement."
+                )
+                a1, a2 = st.columns(2)
+                a1.metric("File", str(artifact.get("filename", "—")))
+                sha = str(artifact.get("file_sha256", ""))
+                a2.metric("File SHA-256", sha[:16] if sha else "—")
+                st.warning(str(provenance_problem))
+            else:
+                embedded = doc_history.get("embedded_metadata", {}) or {}
+                core = embedded.get("core", {}) or {}
+                application = embedded.get("application", {}) or {}
 
-            timeline = artifact.get("timeline_events", []) or []
-            if timeline:
-                with st.expander("doc_history timeline events"):
-                    st.dataframe(pd.DataFrame(timeline), use_container_width=True, hide_index=True)
+                st.caption(
+                    "Pulled by doc_history and stored with the judgement. These observations do not currently alter DiScO scoring."
+                )
+                a1, a2, a3, a4 = st.columns(4)
+                a1.metric("File type", str(doc_history.get("type", "—")).upper())
+                a2.metric("Size", f"{int(doc_history.get('size_bytes', 0) or 0):,} bytes")
+                a3.metric("Embedded creator", str(core.get("creator", "—")))
+                a4.metric("Word TotalTime", str(application.get("TotalTime", "—")))
+
+                clues = artifact.get("provenance_clues", []) or []
+                if clues:
+                    with st.expander("doc_history provenance clues", expanded=True):
+                        for clue in clues:
+                            st.write(f"• {clue}")
+
+                timeline = artifact.get("timeline_events", []) or []
+                if timeline:
+                    with st.expander("doc_history timeline events"):
+                        st.dataframe(pd.DataFrame(timeline), use_container_width=True, hide_index=True)
+
+                with st.expander("Raw doc_history dataset"):
+                    st.json(doc_history)
 
             with st.expander("Extracted document text"):
                 st.text_area("Text sent to DiScO", value=text, height=320, disabled=True)
-
-            with st.expander("Raw doc_history dataset"):
-                st.json(doc_history)
 
         with st.expander("Explain matches"):
             for feature in profile.features:
