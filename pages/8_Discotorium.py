@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from statistics import mean, median
 
 import pandas as pd
@@ -235,6 +236,16 @@ st.caption(
     f"Text SHA `{str(selected.get('text_sha256', ''))[:16]}` · "
     f"Rules SHA `{str(selected.get('rules_sha256', ''))[:16]}` · "
     f"Scoring model = `{'bounded' if _is_bounded_profile(selected) else 'legacy'}`"
+)
+
+selected_judgement_id = str(selected.get("judgement_id", "judgement"))
+st.download_button(
+    "Download this judgement (JSON)",
+    data=json.dumps(selected, ensure_ascii=False, indent=2),
+    file_name=f"disco_judgement_{selected_judgement_id}.json",
+    mime="application/json",
+    key=f"download_stored_judgement_{selected_judgement_id}",
+    use_container_width=True,
 )
 
 st.text_area(
