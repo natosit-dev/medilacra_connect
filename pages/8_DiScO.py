@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -83,6 +85,15 @@ if judge:
         st.caption(
             f"Judgement saved locally: `{record['judgement_id']}` • "
             f"AI generated = `{record['ai_generated']}`{source_note}. The label did not affect scoring."
+        )
+        judgement_id = str(record.get("judgement_id", "judgement"))
+        st.download_button(
+            "Download this judgement (JSON)",
+            data=json.dumps(record, ensure_ascii=False, indent=2),
+            file_name=f"disco_judgement_{judgement_id}.json",
+            mime="application/json",
+            key=f"download_judgement_{judgement_id}",
+            use_container_width=True,
         )
 
         m1, m2, m3, m4 = st.columns(4)
