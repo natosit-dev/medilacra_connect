@@ -335,6 +335,15 @@
     ]
   },
   {
+    "id": "em_dash_style",
+    "label": "Em dash usage",
+    "kind": "regex",
+    "semantic_max": 0.0,
+    "ai_max": 0.05,
+    "half_saturation": 1.0,
+    "pattern": "—"
+  },
+  {
     "id": "markdown_scaffolding",
     "label": "Markdown scaffolding",
     "kind": "regex",
