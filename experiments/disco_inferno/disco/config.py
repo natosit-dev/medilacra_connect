@@ -86,15 +86,22 @@ DEFAULT_RULES = _load_rule_file(DEFAULT_RULES_PATH)
 def load_rules(path: Path = RUNTIME_RULES_PATH) -> tuple[FeatureRule, ...]:
     """Load mutable local rules, falling back to checked-in JSON defaults.
 
-    Legacy local overrides keep their detector dictionaries and patterns but
-    inherit the new bounded scoring priors for matching rule IDs.
+    Local detector edits are overlaid on the current checked-in rule set:
+    - legacy scoring fields inherit the new bounded priors for known rule IDs
+    - newly added checked-in rules appear even if an older local override exists
+    - extra local custom rules are retained after the checked-in defaults
     """
 
     if not path.exists():
         return DEFAULT_RULES
 
     defaults_by_id = {rule.id: rule for rule in DEFAULT_RULES}
-    return _load_rule_file(path, scoring_defaults=defaults_by_id)
+    local_rules = _load_rule_file(path, scoring_defaults=defaults_by_id)
+    local_by_id = {rule.id: rule for rule in local_rules}
+
+    merged = [local_by_id.get(default.id, default) for default in DEFAULT_RULES]
+    merged.extend(rule for rule in local_rules if rule.id not in defaults_by_id)
+    return tuple(merged)
 
 
 def save_rules(
