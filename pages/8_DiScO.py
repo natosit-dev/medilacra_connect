@@ -13,7 +13,8 @@ st.markdown(
     "associated with semantic reconstruction cost. Same text + same configuration produces the same profile."
 )
 st.info(
-    "The displayed scores are simple weighted summaries of deterministic observations, not calibrated probabilities."
+    "Semantic signal and AI signal are bounded 0–1 summaries of deterministic observations, not calibrated probabilities. "
+    "The raw feature inventory remains the canonical artifact."
 )
 
 with st.form("disco_judgement"):
@@ -51,16 +52,17 @@ if judge:
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Words", f"{profile.word_count:,}")
         m2.metric("Characters", f"{profile.character_count:,}")
-        m3.metric("Signal score", f"{profile.signal_score:.2f}")
-        m4.metric("AI signal", f"{profile.ai_signal_score:.2f}")
+        m3.metric("Semantic signal", f"{profile.signal_score:.3f}")
+        m4.metric("AI signal", f"{profile.ai_signal_score:.3f}")
 
         rows = [
             {
                 "Feature": feature.label,
                 "Count": feature.count,
-                "Rate / 100 words": round(feature.rate_per_100_words, 2),
-                "Weight": feature.weight,
-                "AI weight": feature.ai_weight,
+                "Rate / 100": round(feature.rate_per_100_words, 3),
+                "Strength": round(feature.strength, 3),
+                "Semantic contribution": round(feature.semantic_contribution, 3),
+                "AI contribution": round(feature.ai_contribution, 3),
             }
             for feature in profile.features
         ]
@@ -70,6 +72,13 @@ if judge:
         with st.expander("Explain matches"):
             for feature in profile.features:
                 st.markdown(f"#### {feature.label}")
+                st.caption(
+                    f"rate={feature.rate_per_100_words:.3f}/100 · "
+                    f"half-saturation={feature.half_saturation:.3f} · "
+                    f"strength={feature.strength:.3f} · "
+                    f"semantic max={feature.semantic_max:.3f} · "
+                    f"AI max={feature.ai_max:.3f}"
+                )
                 if not feature.matches:
                     st.caption("No matches.")
                     continue
