@@ -16,11 +16,12 @@ from experiments.disco_inferno.disco import (
 st.title("🕺 Disco Fever")
 st.caption("DiScO calibration console")
 st.markdown(
-    "Adjust the active DiScO weights and detector dictionaries without changing the detector engine. "
-    "Changes are stored locally and are applied to future judgements."
+    "Adjust bounded scoring priors and detector dictionaries without changing the detector engine. "
+    "Changes are stored locally and applied to future judgements."
 )
 st.info(
-    "Disco Fever changes configuration, not historical profiles. Each stored judgement keeps the exact rule snapshot used when it was scored."
+    "Each feature has a maximum semantic contribution, a maximum AI contribution, and a half-saturation rate. "
+    "Historical profiles keep the exact rule snapshot used when they were scored."
 )
 
 rules = load_rules()
@@ -32,22 +33,38 @@ with st.form("disco_fever_rules"):
     for rule in rules:
         with st.expander(f"{rule.label} · `{rule.id}`", expanded=True):
             st.caption(f"Detector type: `{rule.kind}`")
-            weight_col, ai_weight_col = st.columns(2)
-            with weight_col:
-                weight = st.number_input(
-                    "Semantic weight",
-                    value=float(rule.weight),
-                    step=0.1,
-                    key=f"weight-{rule.id}",
-                    help="Contribution to the semantic signal score.",
+            semantic_col, ai_col, saturation_col = st.columns(3)
+            with semantic_col:
+                semantic_max = st.number_input(
+                    "Semantic max",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(rule.semantic_max),
+                    step=0.01,
+                    format="%.3f",
+                    key=f"semantic-max-{rule.id}",
+                    help="Maximum amount this feature can add to the 0–1 semantic signal.",
                 )
-            with ai_weight_col:
-                ai_weight = st.number_input(
-                    "AI weight",
-                    value=float(rule.ai_weight),
-                    step=0.1,
-                    key=f"ai-weight-{rule.id}",
-                    help="Contribution to the separate AI-oriented signal score.",
+            with ai_col:
+                ai_max = st.number_input(
+                    "AI max",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(rule.ai_max),
+                    step=0.01,
+                    format="%.3f",
+                    key=f"ai-max-{rule.id}",
+                    help="Maximum amount this feature can add to the 0–1 AI-oriented signal.",
+                )
+            with saturation_col:
+                half_saturation = st.number_input(
+                    "Half-saturation / 100 words",
+                    min_value=0.01,
+                    value=float(rule.half_saturation),
+                    step=0.25,
+                    format="%.3f",
+                    key=f"half-saturation-{rule.id}",
+                    help="Feature rate where this rule reaches half of either configured maximum.",
                 )
 
             terms = rule.terms
@@ -74,7 +91,7 @@ with st.form("disco_fever_rules"):
                 ).strip()
             else:
                 st.caption(
-                    "This is currently a structural detector. Its weights are configurable; "
+                    "This is currently a structural detector. Its scoring priors are configurable; "
                     "its underlying parser remains fixed in code."
                 )
 
@@ -83,8 +100,9 @@ with st.form("disco_fever_rules"):
                     id=rule.id,
                     label=rule.label,
                     kind=rule.kind,
-                    weight=float(weight),
-                    ai_weight=float(ai_weight),
+                    semantic_max=float(semantic_max),
+                    ai_max=float(ai_max),
+                    half_saturation=float(half_saturation),
                     terms=terms,
                     pattern=pattern,
                 )
@@ -99,6 +117,12 @@ with st.form("disco_fever_rules"):
 if save:
     errors: list[str] = []
     for rule in edited_rules:
+        if rule.half_saturation <= 0:
+            errors.append(f"{rule.label}: half-saturation must be greater than zero.")
+        if not 0 <= rule.semantic_max <= 1:
+            errors.append(f"{rule.label}: semantic max must be between 0 and 1.")
+        if not 0 <= rule.ai_max <= 1:
+            errors.append(f"{rule.label}: AI max must be between 0 and 1.")
         if rule.kind == "regex":
             if not rule.pattern:
                 errors.append(f"{rule.label}: regex pattern cannot be empty.")
