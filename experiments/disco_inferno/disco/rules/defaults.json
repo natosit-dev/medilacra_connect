@@ -311,5 +311,13 @@
       "reduction in force",
       "RIF"
     ]
+  },
+  {
+    "id": "markdown_scaffolding",
+    "label": "Markdown scaffolding",
+    "kind": "regex",
+    "weight": 0.0,
+    "ai_weight": 0.1,
+    "pattern": "(?m)^(?:#{1,6}\\s+|[-*+]\\s+|\\d+\\.\\s+|>\\s+|```[^\\n]*$|(?:-{3,}|\\*{3,}|_{3,})\\s*$)|\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__|`[^`\\n]+`"
   }
 ]
