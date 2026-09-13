@@ -18,6 +18,7 @@ class FeatureRule:
     label: str
     kind: str
     weight: float = 1.0
+    ai_weight: float = 0.0
     terms: tuple[str, ...] = ()
     pattern: str | None = None
 
@@ -28,6 +29,7 @@ def _rule_from_dict(raw: dict) -> FeatureRule:
         label=str(raw["label"]),
         kind=str(raw["kind"]),
         weight=float(raw.get("weight", 1.0)),
+        ai_weight=float(raw.get("ai_weight", 0.0)),
         terms=tuple(str(term) for term in raw.get("terms", ())),
         pattern=raw.get("pattern"),
     )
