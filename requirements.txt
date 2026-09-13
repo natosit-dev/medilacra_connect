@@ -16,3 +16,4 @@ scikit-learn>=1.5
 # --- HL7 & synthetic data ---
 hl7apy>=1.3.4        # robust HL7 v2 parsing/building
 faker>=25.0          # synthetic names, addresses, MRNs, etc.
+scipy>=1.12
