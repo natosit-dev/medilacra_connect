@@ -52,6 +52,36 @@ def test_plain_mechanical_sentence_is_negative_control():
     assert _feature(profile, "anthropomorphic_mechanism").count == 0
 
 
+def test_ready_made_phrase_is_counted():
+    profile = inspect_text("At the end of the day, it is important to note that the system changed.")
+    assert _feature(profile, "ready_made_phrases").count == 2
+
+
+def test_verbal_false_limb_is_counted():
+    profile = inspect_text("The change has the effect of reducing latency and gives rise to a new state.")
+    assert _feature(profile, "verbal_false_limbs").count == 2
+
+
+def test_dead_metaphor_is_counted():
+    profile = inspect_text("We need to move the needle without boiling the ocean.")
+    assert _feature(profile, "dead_metaphors").count == 2
+
+
+def test_prestige_diction_is_counted():
+    profile = inspect_text("The robust epistemic paradigm is multidimensional.")
+    assert _feature(profile, "prestige_diction").count == 3
+
+
+def test_semantically_sparse_words_are_counted():
+    profile = inspect_text("Our strategic vision creates meaningful impact and authentic engagement.")
+    assert _feature(profile, "semantically_sparse_words").count == 6
+
+
+def test_concealment_euphemism_is_counted():
+    profile = inspect_text("The company announced a workforce reduction and strategic realignment.")
+    assert _feature(profile, "concealment_euphemisms").count == 2
+
+
 def test_same_text_same_profile():
     text = "The model wants a semantic substrate."
     assert inspect_text(text).as_dict() == inspect_text(text).as_dict()
