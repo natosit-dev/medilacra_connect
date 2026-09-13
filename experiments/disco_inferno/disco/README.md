@@ -77,9 +77,6 @@ The repository already ignores `data/`, so the local corpus is not committed by 
 - edit lexicon / stem dictionaries
 - edit regex patterns
 - reset the active configuration to checked-in defaults
-- summarize the locally stored feedback corpus
-- compare mean signal scores for AI-labelled vs not-marked-AI submissions
-- download the JSONL feedback corpus
 
 Mutable local rule overrides are stored at:
 
@@ -89,7 +86,23 @@ data/disco/rules.json
 
 Historical judgement records retain the exact rule snapshot used at scoring time, so later calibration does not rewrite provenance.
 
+## Discotorium
+
+`pages/8_Discotorium.py` is the corpus review page. It can:
+
+- show judgement count, AI-labelled count, mean and median score, mean words, and rule-configuration count
+- compare mean scores for AI-labelled vs not-marked-AI submissions
+- aggregate feature match rates and score contributions across the stored corpus
+- filter and select individual judgements
+- review the original text, stored profile, individual matches and character offsets
+- inspect the exact rule snapshot used for each judgement
+- inspect the raw stored JSON record
+- download the local JSONL corpus
+
+Discotorium reads historical records as stored; it does not silently rescore them with the current rules.
+
 ## UI
 
 - `pages/8_DiScO.py` — submit text and run JUDGEMENT
-- `pages/8_Disco_Fever.py` — calibrate rules and inspect the feedback corpus
+- `pages/8_Disco_Fever.py` — calibrate active rules
+- `pages/8_Discotorium.py` — review stored judgements and aggregate corpus signals
