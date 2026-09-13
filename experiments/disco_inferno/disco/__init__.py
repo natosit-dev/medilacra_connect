@@ -21,6 +21,14 @@ from .config import (
 )
 from .engine import DiScOProfile, FeatureResult, Match, inspect_text
 from .feedback import FEEDBACK_PATH, load_judgements
+from .guidance import (
+    CADENCE_GUIDANCE,
+    FEATURE_GUIDANCE,
+    METRIC_GUIDANCE,
+    VIRGIL_OVERVIEW,
+    FeatureGuidance,
+    get_feature_guidance,
+)
 
 DESCRIPTION = "Deterministic Inspection of Semantic Coupling in Outputs"
 
@@ -35,7 +43,13 @@ __all__ = [
     "Match",
     "SentenceCadenceObservation",
     "DocHistoryUnavailable",
+    "FeatureGuidance",
+    "FEATURE_GUIDANCE",
+    "CADENCE_GUIDANCE",
+    "METRIC_GUIDANCE",
+    "VIRGIL_OVERVIEW",
     "extract_document_text",
+    "get_feature_guidance",
     "inspect_document_artifact",
     "inspect_sentence_cadence",
     "inspect_text",
