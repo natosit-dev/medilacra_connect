@@ -19,9 +19,9 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 IRIS_HOST = os.getenv("IRIS_HOST", "127.0.0.1")
 IRIS_PORT_RAW = os.getenv("IRIS_PORT", "1972")
-IRIS_NAMESPACE = os.getenv("IRIS_NAMESPACE", "DATADEMO")
-IRIS_USER = os.getenv("IRIS_USER", "demoapp")
-IRIS_PASSWORD = os.getenv("IRIS_PASSWORD", "demo")
+IRIS_NAMESPACE = os.getenv("IRIS_NAMESPACE", "PIQITT")
+IRIS_USER = os.getenv("IRIS_USER", "_SYSTEM")
+IRIS_PASSWORD = os.getenv("IRIS_PASSWORD", "")
 
 st.subheader("IRIS SQL Viewer")
 st.write(
@@ -40,6 +40,10 @@ try:
     IRIS_PORT = int(IRIS_PORT_RAW)
 except ValueError:
     st.error(f"IRIS_PORT must be an integer; got {IRIS_PORT_RAW!r}.")
+    st.stop()
+
+if not IRIS_PASSWORD:
+    st.error("IRIS_PASSWORD is not set in the repo-root .env file.")
     st.stop()
 
 st.write(
