@@ -6,15 +6,22 @@ import streamlit as st
 from dotenv import load_dotenv
 
 try:
-    import pyodbc
-    PYODBC_IMPORT_ERROR = None
+    from iris import dbapi as iris_dbapi
+    IRIS_IMPORT_ERROR = None
 except ImportError as exc:
-    pyodbc = None
-    PYODBC_IMPORT_ERROR = exc
+    iris_dbapi = None
+    IRIS_IMPORT_ERROR = exc
 
 
-# Load variables from .env
+# Load local connection settings. Unlike the old ODBC path, these values are
+# sufficient to recreate the connection on a new machine without a DSN.
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+IRIS_HOST = os.getenv("IRIS_HOST", "127.0.0.1")
+IRIS_PORT_RAW = os.getenv("IRIS_PORT", "1972")
+IRIS_NAMESPACE = os.getenv("IRIS_NAMESPACE", "DATADEMO")
+IRIS_USER = os.getenv("IRIS_USER", "demoapp")
+IRIS_PASSWORD = os.getenv("IRIS_PASSWORD", "demo")
 
 st.subheader("IRIS SQL Viewer")
 st.write(
@@ -23,94 +30,89 @@ st.write(
     f"OS: {platform.system()}"
 )
 
-if pyodbc is None:
-    st.error("pyodbc could not load its native ODBC dependency.")
-    st.code(str(PYODBC_IMPORT_ERROR))
-    if sys.platform.startswith("linux"):
-        st.markdown(
-            "On Debian/Ubuntu/WSL, install the unixODBC runtime first. "
-            "The `libodbc.so.2` error is below the IRIS DSN layer: Python cannot load the ODBC driver manager yet."
-        )
-        st.code(
-            "sudo apt update\n"
-            "sudo apt install -y unixodbc unixodbc-dev\n"
-            "python -c \"import pyodbc; print(pyodbc.version); print(pyodbc.drivers())\"",
-            language="bash",
-        )
-    else:
-        st.markdown(
-            "Install a system ODBC driver manager for this operating system, then restart Streamlit."
-        )
+if iris_dbapi is None:
+    st.error("The InterSystems Python DB-API client is not installed.")
+    st.code(str(IRIS_IMPORT_ERROR))
+    st.code("pip install -r requirements.txt", language="bash")
     st.stop()
 
-odbc_drivers = pyodbc.drivers()
-odbc_sources = pyodbc.dataSources()
-dsn = os.getenv("IRIS_DSN", "iris")
-user = os.getenv("IRIS_USER", "demoapp")
+try:
+    IRIS_PORT = int(IRIS_PORT_RAW)
+except ValueError:
+    st.error(f"IRIS_PORT must be an integer; got {IRIS_PORT_RAW!r}.")
+    st.stop()
 
-st.write("ODBC drivers:", odbc_drivers)
-st.write("ODBC data sources:", odbc_sources)
-st.write(f"Configured IRIS DSN: `{dsn}` | User: `{user}`")
-
-if not odbc_drivers:
-    st.warning(
-        "unixODBC is available, but no ODBC drivers are registered. "
-        "Install/register the InterSystems IRIS ODBC client driver next."
-    )
-
-if dsn not in odbc_sources:
-    st.warning(
-        f"The configured DSN `{dsn}` is not currently visible to unixODBC. "
-        "Check ODBCINI / ~/.odbc.ini and the InterSystems driver path."
-    )
-    if sys.platform.startswith("linux"):
-        st.code(
-            "odbcinst -j\n"
-            "odbcinst -q -d\n"
-            "odbcinst -q -s",
-            language="bash",
-        )
+st.write(
+    "IRIS target: "
+    f"`{IRIS_HOST}:{IRIS_PORT}/{IRIS_NAMESPACE}` | User: `{IRIS_USER}`"
+)
+st.caption("Direct InterSystems DB-API connection — no ODBC driver or DSN required.")
 
 
 @st.cache_resource
 def get_conn():
-    password = os.getenv("IRIS_PASSWORD", "demo")
-    conn_str = f"DSN={dsn};UID={user};PWD={password};"
-    return pyodbc.connect(conn_str, autocommit=True)
+    return iris_dbapi.connect(
+        hostname=IRIS_HOST,
+        port=IRIS_PORT,
+        namespace=IRIS_NAMESPACE,
+        username=IRIS_USER,
+        password=IRIS_PASSWORD,
+    )
 
 
 def run_sql(sql, params=None):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(sql, params or [])
     try:
+        if params:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+
+        if cur.description is None:
+            return [], []
+
         rows = cur.fetchall()
-        cols = [c[0] for c in cur.description]
+        cols = [column[0] for column in cur.description]
         return cols, rows
-    except pyodbc.ProgrammingError:
-        return [], []
+    finally:
+        cur.close()
 
 
-try:
-    get_conn()
-    st.success(f"Connected to IRIS through DSN `{dsn}`.")
-except pyodbc.Error as exc:
-    st.error(f"IRIS ODBC connection failed for DSN `{dsn}`.")
-    st.code(str(exc))
-    st.info(
-        "If this appears after pyodbc loads successfully, the remaining problem is in the "
-        "InterSystems driver / DSN / credentials / host / port / namespace layer."
-    )
-    st.stop()
+def show_query(title, sql):
+    st.subheader(title)
+    try:
+        cols, rows = run_sql(sql)
+    except Exception as exc:
+        st.error(str(exc))
+        return
 
-st.subheader("IRIS Demo.PatientMsg")
-cols, rows = run_sql("SELECT TOP 5 * FROM Demo.PatientMsg")
-st.write(f"Rows returned: {len(rows)}")
-if rows:
-    st.dataframe([{cols[i]: r[i] for i in range(len(cols))} for r in rows])
+    st.write(f"Rows returned: {len(rows)}")
+    if rows:
+        st.dataframe(
+            [{cols[i]: row[i] for i in range(len(cols))} for row in rows],
+            use_container_width=True,
+        )
 
-st.subheader("IRIS Demo.Observation")
-cols, rows = run_sql("SELECT TOP 5 * FROM Demo.Observation")
-st.write(f"Rows returned: {len(rows)}")
-if rows:
-    st.dataframe([{cols[i]: r[i] for i in range(len(cols))} for r in rows])
+
+status_col, reconnect_col = st.columns([4, 1])
+with status_col:
+    try:
+        get_conn()
+        st.success("Connected to IRIS.")
+    except Exception as exc:
+        st.error("IRIS connection failed.")
+        st.code(str(exc))
+        st.info(
+            "Check IRIS_HOST, IRIS_PORT, IRIS_NAMESPACE, IRIS_USER, and "
+            "IRIS_PASSWORD in the repo-root .env file."
+        )
+        st.stop()
+
+with reconnect_col:
+    if st.button("Reconnect"):
+        get_conn.clear()
+        st.rerun()
+
+show_query("IRIS Demo.PatientMsg", "SELECT TOP 5 * FROM Demo.PatientMsg")
+show_query("IRIS Demo.Observation", "SELECT TOP 5 * FROM Demo.Observation")
