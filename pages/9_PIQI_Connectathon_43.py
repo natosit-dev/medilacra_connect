@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from connectathon.piqi_execution import EndpointConfig, execute_run
 from connectathon.piqitt_bridge import (
     backend_path,
     convert_hl7_text,
@@ -111,9 +112,9 @@ with nav1:
 with nav2:
     st.page_link("medi_lacra_app.py", label="Generate ordinary MediLacra HL7", icon="🧬")
 
-st.info(
-    "Current boundary: this UI builds and inspects the local evidence pack. "
-    "External PIQI endpoint submission is not yet wired into this consolidated module."
+st.success(
+    "The local evidence pack can now be executed against external endpoints. "
+    "Exact request/response bytes are preserved before normalization or comparison."
 )
 
 with st.expander("Experiment contract", expanded=False):
@@ -376,9 +377,229 @@ if run:
             "LOCAL_ONLY preflight is not an HL7/US Core/PIQI conformance claim and is not evidence that the track endpoint accepted the payload."
         )
 
-st.markdown("## 3. PIQI endpoint execution")
-st.warning(
-    "External PIQI endpoint execution remains the next implementation slice. "
-    "Raw endpoint responses must be preserved before normalization or comparison."
+st.markdown("## 3. Endpoint execution and comparison")
+st.caption(
+    "Execute the same controlled cases against one or more endpoints. Raw request and response bytes, "
+    "hashes, HTTP metadata, normalized JSON, and pairwise disagreement paths are written back into the evidence pack."
 )
-st.button("Submit pack to PIQI endpoints", disabled=True, use_container_width=True)
+
+with st.expander("Endpoint contract", expanded=False):
+    st.markdown(
+        """
+**FHIR Bundle JSON** posts each case's FHIR Bundle directly. Use this only for endpoints that explicitly accept FHIR JSON
+(for example a FHIR repository, proxy, or Connectathon test client). A successful POST here is transport evidence, not PIQI scoring.
+
+**PIQI reference service** wraps already-converted PIQI `MessageData` in the current open-source `PIQIRequest` envelope.
+The reference service currently exposes `/PIQI/ScoreMessage` and `/PIQI/ScoreAuditMessage`. MediLacra deliberately does **not**
+treat raw FHIR JSON as PIQI `MessageData`; provide a directory containing `<case_id>.piqi.json` files produced by a real
+FHIR → PIQI conversion step.
+        """
+    )
+
+def _endpoint_editor(prefix: str, default_name: str):
+    enabled = st.checkbox("Enable endpoint", value=(prefix == "a"), key=f"piqi43-{prefix}-enabled")
+    if not enabled:
+        return None, None
+
+    name = st.text_input("Endpoint name", value=default_name, key=f"piqi43-{prefix}-name")
+    url = st.text_input(
+        "Full POST URL",
+        value="",
+        placeholder="http://localhost:52773/csp/piqitt/fhir/Bundle",
+        key=f"piqi43-{prefix}-url",
+    )
+    mode_label = st.selectbox(
+        "Payload contract",
+        ["FHIR Bundle JSON", "PIQI reference service (PIQIRequest)"],
+        key=f"piqi43-{prefix}-mode",
+    )
+    payload_mode = "fhir_bundle" if mode_label == "FHIR Bundle JSON" else "piqi_request"
+
+    auth_label = st.selectbox(
+        "Authentication",
+        ["None", "Basic auth", "Header / API key"],
+        key=f"piqi43-{prefix}-auth",
+    )
+    auth_mode = {"None": "none", "Basic auth": "basic", "Header / API key": "header"}[auth_label]
+    username = ""
+    password = ""
+    header_name = ""
+    header_value = ""
+    if auth_mode == "basic":
+        username = st.text_input("Username", key=f"piqi43-{prefix}-username")
+        password = st.text_input("Password", type="password", key=f"piqi43-{prefix}-password")
+    elif auth_mode == "header":
+        header_name = st.text_input(
+            "Header name",
+            value="X-API-Key",
+            key=f"piqi43-{prefix}-header-name",
+        )
+        header_value = st.text_input(
+            "Header value",
+            type="password",
+            key=f"piqi43-{prefix}-header-value",
+        )
+
+    verify_tls = st.checkbox("Verify TLS certificate", value=True, key=f"piqi43-{prefix}-verify-tls")
+    timeout_seconds = float(
+        st.number_input(
+            "Timeout (seconds)",
+            min_value=1,
+            max_value=300,
+            value=30,
+            key=f"piqi43-{prefix}-timeout",
+        )
+    )
+
+    message_dir = None
+    model_mnemonic = "PAT_CLINICAL_V1"
+    rubric_mnemonic = "USCDI_V3"
+    contributor_id = "MediLacra"
+    data_source_id = "MediLacra Connectathon 43"
+    if payload_mode == "piqi_request":
+        st.warning(
+            "This mode requires PIQI-format MessageData. Raw FHIR is intentionally not substituted for the conversion step."
+        )
+        message_dir = st.text_input(
+            "PIQI MessageData directory",
+            placeholder="connectathon/piqi_messages/<run_id>",
+            help="Expected files: <case_id>.piqi.json",
+            key=f"piqi43-{prefix}-message-dir",
+        )
+        model_mnemonic = st.text_input(
+            "PIQI model mnemonic",
+            value="PAT_CLINICAL_V1",
+            key=f"piqi43-{prefix}-model",
+        )
+        rubric_mnemonic = st.text_input(
+            "Evaluation rubric mnemonic",
+            value="USCDI_V3",
+            key=f"piqi43-{prefix}-rubric",
+        )
+        contributor_id = st.text_input(
+            "Contributor ID",
+            value="MediLacra",
+            key=f"piqi43-{prefix}-contributor",
+        )
+        data_source_id = st.text_input(
+            "Data source ID",
+            value="MediLacra Connectathon 43",
+            key=f"piqi43-{prefix}-data-source",
+        )
+
+    if not name.strip() or not url.strip():
+        return None, message_dir
+
+    return (
+        EndpointConfig(
+            name=name.strip(),
+            url=url.strip(),
+            payload_mode=payload_mode,
+            timeout_seconds=timeout_seconds,
+            verify_tls=verify_tls,
+            auth_mode=auth_mode,
+            username=username,
+            password=password,
+            header_name=header_name,
+            header_value=header_value,
+            model_mnemonic=model_mnemonic,
+            rubric_mnemonic=rubric_mnemonic,
+            contributor_id=contributor_id,
+            data_source_id=data_source_id,
+        ),
+        message_dir,
+    )
+
+ep_col_a, ep_col_b = st.columns(2)
+with ep_col_a:
+    st.markdown("### Endpoint A")
+    endpoint_a, message_dir_a = _endpoint_editor("a", "IRIS FHIR")
+with ep_col_b:
+    st.markdown("### Endpoint B")
+    endpoint_b, message_dir_b = _endpoint_editor("b", "PIQI endpoint")
+
+endpoint_configs = [endpoint for endpoint in (endpoint_a, endpoint_b) if endpoint is not None]
+piqi_message_dirs = {}
+if endpoint_a is not None and endpoint_a.payload_mode == "piqi_request" and message_dir_a:
+    piqi_message_dirs[endpoint_a.name] = message_dir_a
+if endpoint_b is not None and endpoint_b.payload_mode == "piqi_request" and message_dir_b:
+    piqi_message_dirs[endpoint_b.name] = message_dir_b
+
+if run:
+    run_dir = Path(run["run_dir"])
+    if st.button(
+        "Execute current pack against enabled endpoints",
+        type="primary",
+        use_container_width=True,
+        disabled=not endpoint_configs,
+    ):
+        try:
+            execution = execute_run(
+                run_dir,
+                endpoints=endpoint_configs,
+                piqi_message_dirs=piqi_message_dirs,
+            )
+            st.session_state["piqi43_endpoint_execution"] = execution
+            st.success(
+                f"Endpoint execution complete: {execution['execution_kind']} / {execution['status']}"
+            )
+        except Exception as exc:
+            st.exception(exc)
+else:
+    st.info("Build a local PIQI scenario pack before endpoint execution.")
+
+execution = st.session_state.get("piqi43_endpoint_execution")
+if execution and run:
+    st.markdown("### Endpoint evidence")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Execution kind", execution.get("execution_kind", ""))
+    m2.metric("Endpoints", execution.get("endpoint_count", 0))
+    m3.metric("Status", execution.get("status", ""))
+
+    execution_rows = []
+    comparison_rows = []
+    for case_result in execution.get("cases", []):
+        case_id = case_result.get("case_id")
+        for endpoint_result in case_result.get("endpoints", []):
+            endpoint_meta = endpoint_result.get("endpoint", {})
+            execution_rows.append(
+                {
+                    "case_id": case_id,
+                    "endpoint": endpoint_meta.get("name"),
+                    "mode": endpoint_meta.get("payload_mode"),
+                    "status": endpoint_result.get("status_code"),
+                    "HTTP ok": endpoint_result.get("ok"),
+                    "transport ok": endpoint_result.get("transport_ok"),
+                    "PIQI response": endpoint_result.get("piqi_response_recognized"),
+                    "elapsed ms": endpoint_result.get("elapsed_ms"),
+                    "request sha256": endpoint_result.get("request_sha256"),
+                    "response sha256": endpoint_result.get("response_sha256"),
+                }
+            )
+        for pair in case_result.get("comparison", {}).get("pairwise", []):
+            comparison_rows.append({"case_id": case_id, **pair})
+
+    if execution_rows:
+        st.dataframe(pd.DataFrame(execution_rows), use_container_width=True, hide_index=True)
+    if comparison_rows:
+        st.markdown("### Pairwise normalized comparison")
+        st.dataframe(pd.DataFrame(comparison_rows), use_container_width=True, hide_index=True)
+        selected_comparison = st.selectbox(
+            "Inspect disagreement paths",
+            range(len(comparison_rows)),
+            format_func=lambda index: (
+                f"{comparison_rows[index]['case_id']} — "
+                f"{comparison_rows[index]['left']} vs {comparison_rows[index]['right']}"
+            ),
+        )
+        st.json(comparison_rows[selected_comparison])
+    elif execution.get("endpoint_count", 0) < 2:
+        st.caption("Configure two endpoints to produce a pairwise agreement comparison.")
+
+    st.download_button(
+        "Download evidence pack including endpoint results",
+        data=zip_run_directory(Path(run["run_dir"])),
+        file_name=f"PIQI_CONNECTATHON_43_{run['run_id']}_EXECUTED.zip",
+        mime="application/zip",
+        use_container_width=True,
+    )
